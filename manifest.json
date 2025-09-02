@@ -1,0 +1,25 @@
+{
+  "name": "Hubannero - Html Banner Exporter",
+  "id": "1527963216001787676",
+  "api": "1.0.0",
+  "main": "code.js",
+  "networkAccess": {
+    "allowedDomains": [
+      "https://cdnjs.cloudflare.com",
+      "https://fonts.googleapis.com",
+      "https://fonts.gstatic.com",
+      "https://hubannero-backend.onrender.com",
+      "https://eubqckzmqadcqrzcuxuw.supabase.co"
+    ],
+    "devAllowedDomains": [
+      "http://localhost:4242"
+    ]
+  },
+  "capabilities": [],
+  "enableProposedApi": false,
+  "documentAccess": "dynamic-page",
+  "editorType": [
+    "figma"
+  ],
+  "ui": "ui.html"
+}

@@ -1,0 +1,1596 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hubannero - Html Banner Exporter</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        :root {
+            --bg-primary: #18181B; --bg-secondary: #27272A; --border-color: #3f3f46;
+            --text-primary: #F4F4F5; --text-secondary: #A1A1AA;
+            --accent-green: #41D974; --accent-green-hover: #36B863;
+            --accent-gray: #52525B; --accent-gray-hover: #71717A;
+            --disabled-color: #3f3f46; --danger-color: #EF4444; --timeline-out: #71717A;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        html, body { height: 100%; overflow: hidden; }
+        body { font-family: 'Inter', sans-serif; background-color: var(--bg-primary); color: var(--text-primary); font-size: 13px; display: flex; flex-direction: column; }
+        body.is-dragging, body.is-dragging-handle { cursor: grabbing; user-select: none; }
+        
+        #top-container { display: flex; flex-direction: column; height: 100%; padding: 12px; gap: 12px; }
+        header { display: flex; align-items: center; gap: 16px; padding: 0 4px 0px 4px; flex-shrink: 0; }
+        #logo-image { height: 36px; width: auto; flex-shrink: 0; }
+        .header-divider { flex-grow: 1; height: 1px; background-color: var(--border-color); }
+        .header-url { flex-shrink: 0; color: var(--accent-green); font-weight: 500; font-size: 12px; text-decoration: none; }
+        .header-url:hover { text-decoration: underline; }
+
+        .tab-nav { display: flex; gap: 4px; border-bottom: 1px solid var(--border-color); padding: 0 8px; flex-shrink: 0;}
+        .tab-btn { background: none; border: none; color: var(--text-secondary); padding: 8px 12px; font-weight: 600; border-bottom: 2px solid transparent; cursor: pointer; }
+        .tab-btn.active { color: var(--text-primary); border-bottom-color: var(--accent-green); }
+        
+        .tab-content { display: none; flex-grow: 1; min-height: 0; height: 100%; }
+        .tab-content.active { display: flex; flex-direction: column; }
+
+        #main-grid { display: grid; grid-template-columns: 320px 1fr; grid-template-rows: 1fr; gap: 12px; height: 100%; overflow: hidden; }
+        .bento-box { background-color: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 8px; padding: 12px; display: flex; flex-direction: column; overflow: hidden; }
+        
+        h3 { font-size: 0.9rem; font-weight: 600; margin-bottom: 12px; color: var(--text-primary); flex-shrink: 0; }
+
+        #asset-list-container { padding: 0; position: relative; }
+        #asset-list-header { padding: 12px; flex-shrink: 0; border-bottom: 1px solid var(--border-color); }
+        #asset-list-wrapper { flex: 1; overflow-y: auto; padding: 0 12px; min-height: 0; position: relative; }
+        #saved-settings-actions { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; padding: 12px; border-top: 1px solid var(--border-color); background-color: var(--bg-secondary); flex-shrink: 0; }
+        #saved-settings-actions button { padding: 6px 10px; font-size: 12px; white-space: nowrap; }
+        #asset-list { display: flex; flex-direction: column; gap: 4px; padding: 8px 0; }
+        #instructions { color: var(--text-secondary); text-align: center; padding: 1rem; }
+
+        .asset-item { background-color: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 6px; display: flex; flex-direction: column; }
+        .asset-header { display: flex; align-items: center; gap: 8px; padding: 8px; cursor: pointer; }
+        .asset-header .thumbnail { width: 32px; height: 32px; object-fit: contain; border-radius: 4px; flex-shrink: 0; }
+        .asset-header .asset-name { flex-grow: 1; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: flex; align-items: center; gap: 6px; }
+        .warning-icon { color: #f59e0b; font-size: 14px; cursor: help; }
+        .warning-tooltip { position: relative; }
+        .warning-tooltip::after {
+            content: attr(data-tooltip);
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 6px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            white-space: nowrap;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.2s;
+            z-index: 1000;
+        }
+        .warning-tooltip:hover::after { opacity: 1; }
+        
+        .layer-actions { display: flex; align-items: center; gap: 4px; margin-left: auto; }
+        .layer-actions button { background: none; border: none; padding: 4px; cursor: pointer; display: flex; align-items: center; justify-content: center; border-radius: 4px; }
+        .layer-actions button:hover:not(:disabled) { background-color: var(--bg-primary); }
+        .layer-actions button svg { width: 16px; height: 16px; stroke: var(--text-secondary); transition: stroke .2s; }
+        .toggle-settings-btn svg { transition: transform 0.2s ease; }
+        .layer-actions button:hover:not(:disabled) svg { stroke: var(--text-primary); }
+        .layer-actions button:disabled svg { stroke: var(--disabled-color); }
+        .layer-actions button:disabled { cursor: not-allowed; }
+        .toggle-settings-btn.is-open svg { transform: rotate(180deg); }
+
+        .timeline-container { width: calc(100% - 16px); margin: 0 8px 1px 8px; position: relative; padding-top: 1px; }
+        .timeline-track { width: 100%; height: 12px; background-color: var(--bg-primary); border-radius: 4px; position: relative; overflow: visible; }
+        .timeline-bar { position: absolute; height: 100%; border-radius: 4px; opacity: 0.8; cursor: grab; display: flex; justify-content: space-between; align-items: center; }
+        .timeline-handle { width: 4px; height: 100%; background-color: rgba(255, 255, 255, 0.5); cursor: ew-resize; z-index: 1; }
+        .timeline-labels { display: flex; justify-content: space-between; margin-top: 1px; height: 10px; }
+        .timeline-label { font-size: 8px; color: var(--text-secondary); font-weight: 500; }
+        .timeline-label.left { text-align: left; }
+        .timeline-label.right { text-align: right; }
+
+
+        .bar-timing-display-fixed { position: absolute; top: -10px; left: 50%; font-size: 8px; color: #C4C193; font-weight: 700; white-space: nowrap; transform: translateX(-50%); pointer-events: none; z-index: 11; text-align: center; text-shadow: 0 0 3px rgba(0,0,0,0.9); background: rgba(0,0,0,0.15); padding: 0px 3px; border-radius: 2px; }
+        .in-anim { background-color: var(--accent-green); z-index: 2; }
+        .mid-anim { background-color: #F5DB3D; z-index: 3; }
+        .out-anim { background-color: var(--timeline-out); z-index: 1; }
+
+        .settings-dropdown { display: none; padding: 12px; border-top: 1px solid var(--border-color); margin-top: 8px; background-color: var(--bg-primary); }
+        .settings-dropdown .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; align-items: start; }
+        .settings-dropdown h4 { font-size: 0.8rem; font-weight: 600; margin-bottom: 12px; }
+        .anim-type-toggle { display: flex; gap: 4px; background-color: var(--bg-secondary); border-radius: 4px; padding: 4px; margin-bottom: 16px; }
+        .anim-type-toggle button { flex: 1; background: transparent; border: none; color: var(--text-secondary); padding: 4px; font-size: 12px; font-weight: 500; cursor: pointer;}
+        .anim-type-toggle button.active { background-color: var(--accent-gray); color: var(--text-primary); border-radius: 4px; }
+        .anim-controls .preset-controls, .anim-controls .custom-controls { display: none; flex-direction: column; gap: 8px; }
+        .anim-controls .preset-controls.active, .anim-controls .custom-controls.active { display: flex; }
+        
+        .motion-editor-container { width: 130px; height: 130px; background-color: var(--bg-secondary); border-radius: 4px; padding: 4px; margin: 0 auto 12px auto; display: flex; align-items: center; justify-content: center; }
+        .motion-editor { position: relative; background-color: var(--bg-primary); border: 1px solid var(--border-color); touch-action: none; flex-shrink: 0; }
+        .motion-editor .center-point { position: absolute; width: 6px; height: 6px; background: white; border-radius: 50%; transform: translate(-50%, -50%); }
+        .motion-editor .handle { position: absolute; width: 12px; height: 12px; border-radius: 50%; border: 2px solid white; cursor: grab; transform: translate(-50%, -50%); z-index: 2; }
+        .motion-editor .handle.start { background-color: var(--accent-green); }
+        .motion-editor .handle.end { background-color: var(--danger-color); }
+        .motion-editor .handle:active { cursor: grabbing; }
+        .motion-path-svg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 1; }
+        .motion-path-svg line { stroke-width: 1.5; stroke-dasharray: 3 3; }
+        .motion-path-svg line.start-path { stroke: var(--accent-green); }
+        .motion-path-svg line.end-path { stroke: var(--danger-color); }
+        
+        .pos-inputs { display: grid; grid-template-columns: auto 1fr; gap: 4px 8px; align-items: center; }
+        .pos-inputs label { margin-bottom: 0; text-align: right; font-size: 11px; }
+        .pos-inputs input { width: 100%; text-align: left; }
+        .slider-group { display: grid; grid-template-columns: 1fr auto auto; gap: 8px; align-items: center; }
+        .slider-group span { font-size: 11px; color: var(--text-secondary); }
+        .slider-group .slider-value { width: 50px; padding: 4px; text-align: right; }
+
+        #playback-container { padding: 10px 20px; background-color: var(--bg-primary); border-top: 1px solid var(--border-color); }
+        .playback-controls { display: flex; gap: 12px; align-items: center; }
+        .playback-controls button { padding: 6px; flex-shrink: 0; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; border-radius: 6px; background-color: transparent; border: 1px solid var(--border-color); transition: all 0.2s ease; }
+        .playback-controls button:hover { background-color: var(--bg-secondary); border-color: var(--accent-green); }
+        .playback-controls button svg { width: 16px; height: 16px; }
+        #time-display { font-size: 12px; color: var(--text-secondary); white-space: nowrap; font-family: monospace; min-width: 100px; }
+        #scrubber-track { flex-grow: 1; height: 6px; background-color: rgba(255,255,255,0.1); border-radius: 3px; cursor: pointer; position: relative; margin: 0 12px; overflow: hidden; }
+        #scrubber-progress { position: absolute; top: 0; left: 0; height: 100%; background: var(--accent-green); border-radius: 3px; transition: width 0.05s ease; }
+        #scrubber-thumb { position: absolute; top: -6px; left: 0; width: 2px; height: 18px; background-color: var(--accent-green); border-radius: 1px; transform: translateX(-50%); cursor: grab; z-index: 10; box-shadow: 0 2px 8px rgba(0,0,0,0.3); transition: all 0.2s ease; }
+        #scrubber-thumb::before { content: ''; position: absolute; top: 50%; left: 50%; width: 8px; height: 8px; background-color: var(--accent-green); border-radius: 50%; transform: translate(-50%, -50%); border: 2px solid white; box-shadow: 0 2px 6px rgba(0,0,0,0.2); transition: all 0.2s ease; }
+        #scrubber-thumb:hover { width: 3px; box-shadow: 0 3px 12px rgba(0,0,0,0.4); }
+        #scrubber-thumb:hover::before { width: 10px; height: 10px; box-shadow: 0 3px 8px rgba(0,0,0,0.3); }
+        #scrubber-thumb:active { cursor: grabbing; width: 3px; }
+        
+        #preview-box { background-color: var(--bg-secondary); padding: 0; border-bottom: 1px solid var(--border-color); }
+        #preview-iframe-container { flex: 1; padding: 20px; display: flex; align-items: center; justify-content: center; min-height: 0; }
+        #preview-iframe { background-color: white; border: none; border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); transform-origin: center center; flex-shrink: 0; }
+        #preview-placeholder { color: var(--text-secondary); text-align: center; }
+        
+        #main-controls-container { padding: 8px 20px 20px 20px; background-color: var(--bg-primary); flex-shrink: 0; }
+        .settings-grid, .action-grid { display: grid; grid-template-columns: auto 1fr; gap: 10px 8px; align-items: center; }
+        .settings-grid > label, .action-grid > label { font-size: 12px; font-weight: 500; color: var(--text-secondary); text-align: right; margin-bottom: 0; }
+        .control-row { display: flex; gap: 8px; align-items: center; }
+        .control-row input { min-width: 50px; }
+        .action-grid { margin-top: 12px; }
+        .action-group { display: flex; gap: 8px; align-items: center; }
+        .action-group > input { flex-grow: 1; }
+        .action-group > button { white-space: nowrap; }
+        
+        label { display: block; font-size: 11px; font-weight: 500; color: var(--text-secondary); margin-bottom: 4px; }
+        input, select { background-color: var(--bg-primary); border: 1px solid var(--border-color); color: var(--text-primary); width: 100%; padding: 6px; border-radius: 4px; font-size: 12px; transition: all 0.2s ease-in-out; }
+        input:focus, select:focus { border-color: var(--accent-green); box-shadow: 0 0 0 3px rgba(65, 217, 116, 0.4); outline: none; }
+        input[type="range"] { padding: 0; }
+
+        button { border: 1px solid transparent; padding: 9px 15px; border-radius: 6px; font-weight: 600; font-size: 13px; cursor: pointer; transition: background-color 0.2s, color 0.2s, border-color 0.2s; }
+        button:disabled { background-color: var(--disabled-color) !important; color: var(--text-secondary) !important; border-color: transparent !important; cursor: not-allowed; }
+        
+        .btn-primary { background-color: var(--accent-green); color: var(--bg-secondary); border-color: var(--accent-green); }
+        .btn-primary:hover:not(:disabled) { background-color: var(--accent-green-hover); border-color: var(--accent-green-hover); }
+        .btn-secondary { background-color: transparent; color: var(--accent-green); border-color: var(--accent-green); }
+        .btn-secondary:hover:not(:disabled) { background-color: var(--accent-green); color: var(--bg-secondary); }
+        
+        #progress-section { padding-top: 12px; display: none; }
+        #progress-text { font-size: 11px; text-align: center; color: var(--text-secondary); margin-bottom: 4px; }
+        #progress-bar-outer { width: 100%; background-color: var(--bg-primary); border-radius: 99px; height: 6px; overflow: hidden; }
+        #progress-bar-inner { background-color: var(--accent-green); height: 100%; width: 0%; transition: width 0.3s ease; }
+        #generate-feedback { color: var(--danger-color); text-align: center; font-size: 11px; margin-top: 8px; height: 1em; }
+        
+        /* Video Export Styles */
+        #video-export-progress { margin-top: 16px; padding: 16px; border: 1px solid var(--border-color); border-radius: 8px; background-color: var(--bg-secondary); }
+        #video-export-progress h4 { margin: 0 0 12px 0; color: var(--accent-green); font-size: 14px; }
+        #video-progress-text { font-size: 12px; color: var(--text-primary); margin-bottom: 8px; }
+        #video-progress-bar-outer { width: 100%; background-color: var(--bg-primary); border-radius: 99px; height: 8px; overflow: hidden; }
+        #video-progress-bar-inner { background: linear-gradient(90deg, #F5DB3D, #40D873); height: 100%; width: 0%; transition: width 0.3s ease; }
+        
+        /* Indeterminate progress bar animation */
+        #video-progress-bar-inner.indeterminate {
+            width: 100% !important;
+            background: linear-gradient(90deg, 
+                transparent 0%, 
+                rgba(245, 219, 61, 0.3) 25%, 
+                rgba(64, 216, 115, 0.8) 50%, 
+                rgba(245, 219, 61, 0.3) 75%, 
+                transparent 100%
+            );
+            background-size: 200% 100%;
+            animation: shimmer 2s ease-in-out infinite;
+        }
+        
+        @keyframes shimmer {
+            0% {
+                background-position: -200% 0;
+            }
+            100% {
+                background-position: 200% 0;
+            }
+        }
+        #video-export-status { font-style: italic; color: var(--text-secondary); }
+        .btn-secondary:disabled { opacity: 0.5; cursor: not-allowed; }
+        .toggle-switch { display: flex; align-items: center; justify-content: flex-start; }
+        .toggle-switch input { height: 0; width: 0; visibility: hidden; }
+        .toggle-switch label { cursor: pointer; text-indent: -9999px; width: 36px; height: 20px; background: var(--accent-gray); display: block; border-radius: 100px; position: relative; margin: 0; }
+        .toggle-switch label:after { content: ''; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; background: #fff; border-radius: 90px; transition: 0.3s; }
+        .toggle-switch input:checked + label { background: var(--accent-green); }
+        .toggle-switch input:checked + label:after { left: calc(100% - 2px); transform: translateX(-100%); }
+        .settings-divider { border: 0; height: 1px; background-color: var(--border-color); margin: 12px 0; }
+        
+        #export-queue-list { flex-grow: 1; overflow-y: auto; background: var(--bg-primary); border-radius: 6px; padding: 8px; display: flex; flex-direction: column; gap: 8px; }
+        .export-queue-item { display: flex; align-items: center; gap: 12px; background: var(--bg-secondary); padding: 8px 12px; border-radius: 4px; border: 1px solid var(--border-color); }
+        .export-queue-item .name { flex-grow: 1; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .export-queue-item .dims { font-size: 11px; color: var(--text-secondary); }
+        .export-queue-item .weight { font-size: 11px; color: var(--text-secondary); font-weight: 600; }
+        .export-queue-item .weight.is-overweight { color: var(--danger-color); }
+        .export-queue-item .remove-btn { background: none; border: none; padding: 4px; }
+        .export-queue-item .remove-btn svg { width: 16px; height: 16px; stroke: var(--text-secondary); }
+        .export-queue-item .remove-btn:hover svg { stroke: var(--danger-color); }
+        #export-queue-placeholder { text-align: center; color: var(--text-secondary); margin: auto; }
+        .export-actions { padding: 12px; border-top: 1px solid var(--border-color); background-color: var(--bg-secondary); flex-shrink: 0; border-bottom-left-radius: 8px; border-bottom-right-radius: 8px;}
+    </style>
+</head>
+<body>
+    <div id="top-container">
+        <header>
+            <img id="logo-image" src="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQ3IiBoZWlnaHQ9IjQ3IiB2aWV3Qm94PSIwIDAgMjQ3IDQ3IiBmaWxsPSJub25lIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPgo8cGF0aCBkPSJNMjggMi45OTk3NkMzMy41MjI4IDIuOTk5NzYgMzcuOTk5OSA3LjQ3NyAzOCAxMi45OTk4VjMyLjMzNTdDMzggMzYuMzUzNCAzNS41OTUgMzkuOTgxNyAzMS44OTQ1IDQxLjU0NjZMMjIuODk0NSA0NS4zNTIzQzIwLjQwNDggNDYuNDA1MSAxNy41OTUyIDQ2LjQwNTEgMTUuMTA1NSA0NS4zNTIzTDYuMTA1NDcgNDEuNTQ2NkMyLjQwNTAxIDM5Ljk4MTcgLTEuNDUzNDdlLTA5IDM2LjM1MzQgMCAzMi4zMzU3VjEyLjk5OThDMC4wMDAxMTM2MzkgNy40NzcgNC40NzcyMyAyLjk5OTc1IDEwIDIuOTk5NzZIMTAuMTgyMkMxMS44MDQ4IDIuOTk5NzYgMTMuMjY2NiAzLjk3OTkxIDEzLjg4MjYgNS40ODA5M0wxNy45NzgyIDE1LjQ1OTFDMTguMjM2NSAxNi4wODg3IDE4Ljg0OTYgMTYuNDk5OCAxOS41MzAxIDE2LjQ5OThWMTYuNDk5OEMyMC4yMzU1IDE2LjQ5OTggMjAuODY1NiAxNi4wNTg1IDIxLjEwNjcgMTUuMzk1NkwyNC44MDAxIDUuMjQwODhDMjUuMjg5NSAzLjg5NTM5IDI2LjU2ODMgMi45OTk3NiAyOCAyLjk5OTc2VjIuOTk5NzZaTTEwLjYyNCA4Ljk5OTc2QzguOTU0MTQgOC45OTk3NiA3LjU5OTc4IDEwLjM1MzMgNy41OTk2MSAxMi4wMjMyVjMzLjc3OTFDNy41OTk2MiAzNS45MTA5IDkuMzI4MTMgMzcuNjM5MyAxMS40NiAzNy42Mzk0QzEzLjEwNDQgMzcuNjM5NCAxNC41Njg3IDM2LjU5NzQgMTUuMTA3NCAzNS4wNDM3TDE3LjU4OTggMjcuODgyNkMxNy44ODMgMjcuMDM3MyAxOC42Nzk1IDI2LjQ3MDUgMTkuNTc0MiAyNi40NzA1QzIwLjUwMyAyNi40NzA1IDIxLjMyMTQgMjcuMDgwNSAyMS41ODY5IDI3Ljk3MDVMMjMuNjYzMSAzNC45MzUzQzI0LjE0MTQgMzYuNTM5NiAyNS42MTY5IDM3LjYzOTQgMjcuMjkxIDM3LjYzOTRDMjkuMzgxNyAzNy42MzkzIDMxLjA3NjIgMzUuOTQ0IDMxLjA3NjIgMzMuODUzM1YxMi40MjE2QzMxLjA3NTkgMTAuNTU5OCAyOS41MTc5IDkuMDc2NTUgMjcuNjU4MiA5LjE2ODdDMjYuMzUgOS4yMzM1MyAyNS4yMDc0IDEwLjA3NTkgMjQuNzU4OCAxMS4zMDY0TDIyLjEyMDEgMTguNTQ3NkMyMS43NDc0IDE5LjU3MDQgMjAuNzc1MSAyMC4yNTE2IDE5LjY4NjUgMjAuMjUxN0MxOC43MDIzIDIwLjI1MTcgMTcuODAyNiAxOS42OTM5IDE3LjM2NTIgMTguODEyM0wxMy4zMzMgMTAuNjc5NEMxMi44MjI1IDkuNjUwNDggMTEuNzcyNyA4Ljk5OTg3IDEwLjYyNCA4Ljk5OTc2WiIgZmlsbD0iIzQwRDg3MyIvPgo8cGF0aCBkPSJNNjUuMTQ3OCAzNlY4LjU0ODUxSDY5LjM4MzFWMzZINjUuMTQ3OFpNNDcuMjI1OSAzNlY4LjU0ODUxSDUxLjQ2MTJWMzZINDcuMjI1OVpNNDkuMDY5IDI0LjM1MjdWMjAuMjc0Mkg2Ny4wMzAyVjI0LjM1MjdINDkuMDY5Wk04MS42ODcgMzYuMzkyMkM4MC4yMjI5IDM2LjM5MjIgNzguOTQxOCAzNi4wNTIzIDc3Ljg0MzggMzUuMzcyNUM3Ni43NzE5IDM0LjY5MjggNzUuOTM1MiAzMy43Mzg1IDc1LjMzMzkgMzIuNTA5N0M3NC43NTg4IDMxLjI4MSA3NC40NzEyIDI5LjgxNjkgNzQuNDcxMiAyOC4xMTc1VjE1LjQxMTRINzguNTEwNVYyNy4wMTk0Qzc4LjUxMDUgMjguMjIyMSA3OC42OTM1IDI5LjI2NzggNzkuMDU5NSAzMC4xNTY4Qzc5LjQ1MTcgMzEuMDE5NSA4MC4wMDA3IDMxLjY4NjIgODAuNzA2NiAzMi4xNTY4QzgxLjQzODYgMzIuNjI3NCA4Mi4zMTQ0IDMyLjg2MjcgODMuMzM0MSAzMi44NjI3Qzg0LjA5MjMgMzIuODYyNyA4NC43ODUxIDMyLjc0NSA4NS40MTI1IDMyLjUwOTdDODYuMDQgMzIuMjQ4MyA4Ni41NzYgMzEuODk1MyA4Ny4wMjA0IDMxLjQ1MDlDODcuNDkxIDMxLjAwNjQgODcuODU3IDMwLjQ3MDUgODguMTE4NSAyOS44NDNDODguMzc5OSAyOS4yMTU2IDg4LjUxMDYgMjguNTM1OCA4OC41MTA2IDI3LjgwMzhWMTUuNDExNEg5Mi41NDk5VjM2SDg4LjUxMDZWMzEuNjg2Mkw4OS4yMTY1IDMxLjIxNTZDODguOTAyOCAzMi4xODI5IDg4LjM2NjggMzMuMDU4OCA4Ny42MDg3IDMzLjg0MzFDODYuODc2NiAzNC42Mjc0IDg2LjAwMDggMzUuMjU0OSA4NC45ODEyIDM1LjcyNTVDODMuOTYxNSAzNi4xNjk5IDgyLjg2MzUgMzYuMzkyMiA4MS42ODcgMzYuMzkyMlpNMTA3LjQ3MSAzNi4zOTIyQzEwNi41ODIgMzYuMzkyMiAxMDUuNjkzIDM2LjI0ODQgMTA0LjgwNCAzNS45NjA4QzEwMy45NDEgMzUuNjczMiAxMDMuMTQ0IDM1LjI5NDEgMTAyLjQxMiAzNC44MjM1QzEwMS43MDYgMzQuMzI2OCAxMDEuMTA0IDMzLjc5MDggMTAwLjYwOCAzMy4yMTU2QzEwMC4xMzcgMzIuNjE0MyA5OS44MjMzIDMyLjAxMyA5OS42NjY1IDMxLjQxMTdMMTAwLjY4NiAzMC44NjI3VjM1Ljg4MjRIOTYuNjQ2OFY2Ljk3OTg2SDEwMC42ODZWMjAuMTE3NEwxMDAuMDU5IDE5Ljc2NDRDMTAwLjE4OSAxOS4xNjMxIDEwMC40NzcgMTguNTg3OSAxMDAuOTIxIDE4LjAzODlDMTAxLjM2NiAxNy40NjM3IDEwMS45MjggMTYuOTUzOSAxMDIuNjA4IDE2LjUwOTRDMTAzLjMxNCAxNi4wMzg4IDEwNC4wNzIgMTUuNjcyOCAxMDQuODgyIDE1LjQxMTRDMTA1LjY5MyAxNS4xMjM4IDEwNi41MTYgMTQuOTggMTA3LjM1MyAxNC45OEMxMDkuMjA5IDE0Ljk4IDExMC44NTYgMTUuNDM3NSAxMTIuMjk0IDE2LjM1MjZDMTEzLjczMiAxNy4yNjc2IDExNC44NjkgMTguNTM1NiAxMTUuNzA2IDIwLjE1NjZDMTE2LjU0MyAyMS43NTE0IDExNi45NjEgMjMuNTgxNSAxMTYuOTYxIDI1LjY0NjlDMTE2Ljk2MSAyNy43MTIzIDExNi41NDMgMjkuNTU1NCAxMTUuNzA2IDMxLjE3NjRDMTE0Ljg5NiAzMi43OTczIDExMy43NzEgMzQuMDc4NCAxMTIuMzMzIDM1LjAxOTZDMTEwLjg5NSAzNS45MzQ2IDEwOS4yNzUgMzYuMzkyMiAxMDcuNDcxIDM2LjM5MjJaTTEwNi44MDQgMzIuNzA1OEMxMDguMDA3IDMyLjcwNTggMTA5LjA3OCAzMi40MDUyIDExMC4wMiAzMS44MDM4QzExMC45NjEgMzEuMTc2NCAxMTEuNzA2IDMwLjMzOTggMTEyLjI1NSAyOS4yOTRDMTEyLjgwNCAyOC4yMjIxIDExMy4wNzggMjcuMDA2NCAxMTMuMDc4IDI1LjY0NjlDMTEzLjA3OCAyNC4zMTM1IDExMi44MDQgMjMuMTIzOSAxMTIuMjU1IDIyLjA3ODJDMTExLjczMiAyMS4wMDYzIDExMSAyMC4xNjk2IDExMC4wNTkgMTkuNTY4M0MxMDkuMTE4IDE4Ljk2NyAxMDguMDMzIDE4LjY2NjMgMTA2LjgwNCAxOC42NjYzQzEwNS41NzUgMTguNjY2MyAxMDQuNDkgMTguOTY3IDEwMy41NDkgMTkuNTY4M0MxMDIuNjA4IDIwLjE2OTYgMTAxLjg2MyAyMS4wMDYzIDEwMS4zMTQgMjIuMDc4MkMxMDAuNzY1IDIzLjEyMzkgMTAwLjQ5IDI0LjMxMzUgMTAwLjQ5IDI1LjY0NjlDMTAwLjQ5IDI3LjAwNjQgMTAwLjc2NSAyOC4yMjIxIDEwMS4zMTQgMjkuMjk0QzEwMS44NjMgMzAuMzM5OCAxMDIuNjA4IDMxLjE3NjQgMTAzLjU0OSAzMS44MDM4QzEwNC40OSAzMi40MDUyIDEwNS41NzUgMzIuNzA1OCAxMDYuODA0IDMyLjcwNThaTTEyNy43MDIgMzYuMzkyMkMxMjYuMDAyIDM2LjM5MjIgMTI0LjQ0NyAzNS45MjE2IDEyMy4wMzUgMzQuOTgwNEMxMjEuNjQ5IDM0LjAzOTIgMTIwLjUzOCAzMi43NTgxIDExOS43MDEgMzEuMTM3MkMxMTguODY1IDI5LjUxNjIgMTE4LjQ0NyAyNy42ODYxIDExOC40NDcgMjUuNjQ2OUMxMTguNDQ3IDIzLjU4MTUgMTE4Ljg2NSAyMS43NTE0IDExOS43MDEgMjAuMTU2NkMxMjAuNTY0IDE4LjUzNTYgMTIxLjcxNSAxNy4yNjc2IDEyMy4xNTMgMTYuMzUyNkMxMjQuNjE3IDE1LjQzNzUgMTI2LjI1MSAxNC45OCAxMjguMDU1IDE0Ljk4QzEyOS4xMjYgMTQuOTggMTMwLjEwNyAxNS4xMzY5IDEzMC45OTYgMTUuNDUwNkMxMzEuODg1IDE1Ljc2NDMgMTMyLjY1NiAxNi4yMDg4IDEzMy4zMSAxNi43ODRDMTMzLjk4OSAxNy4zMzMgMTM0LjUzOCAxNy45NzM1IDEzNC45NTcgMTguNzA1NkMxMzUuNDAxIDE5LjQzNzYgMTM1LjY3NiAyMC4yMjE5IDEzNS43OCAyMS4wNTg1TDEzNC44NzggMjAuNzQ0OFYxNS40MTE0SDEzOC45NTdWMzZIMTM0Ljg3OFYzMS4wOTc5TDEzNS44MTkgMzAuODIzNEMxMzUuNjYzIDMxLjUyOTMgMTM1LjMzNiAzMi4yMjIyIDEzNC44MzkgMzIuOTAxOUMxMzQuMzY4IDMzLjU1NTUgMTMzLjc1NCAzNC4xNDM4IDEzMi45OTYgMzQuNjY2NkMxMzIuMjY0IDM1LjE4OTUgMTMxLjQ0IDM1LjYwNzggMTMwLjUyNSAzNS45MjE2QzEyOS42MzYgMzYuMjM1MyAxMjguNjk1IDM2LjM5MjIgMTI3LjcwMiAzNi4zOTIyWk0xMjguNzYgMzIuNjY2NkMxMjkuOTg5IDMyLjY2NjYgMTMxLjA3NCAzMi4zNjU5IDEzMi4wMTUgMzEuNzY0NkMxMzIuOTU3IDMxLjE2MzMgMTMzLjY4OSAzMC4zMzk4IDEzNC4yMTIgMjkuMjk0QzEzNC43NjEgMjguMjIyMSAxMzUuMDM1IDI3LjAwNjQgMTM1LjAzNSAyNS42NDY5QzEzNS4wMzUgMjQuMzEzNSAxMzQuNzYxIDIzLjEyMzkgMTM0LjIxMiAyMi4wNzgyQzEzMy42ODkgMjEuMDMyNCAxMzIuOTU3IDIwLjIwODkgMTMyLjAxNSAxOS42MDc1QzEzMS4wNzQgMTkuMDA2MiAxMjkuOTg5IDE4LjcwNTYgMTI4Ljc2IDE4LjcwNTZDMTI3LjU1OCAxOC43MDU2IDEyNi40ODYgMTkuMDA2MiAxMjUuNTQ1IDE5LjYwNzVDMTI0LjYzIDIwLjIwODkgMTIzLjg5OCAyMS4wMzI0IDEyMy4zNDkgMjIuMDc4MkMxMjIuODI2IDIzLjEyMzkgMTIyLjU2NCAyNC4zMTM1IDEyMi41NjQgMjUuNjQ2OUMxMjIuNTY0IDI3LjAwNjQgMTIyLjgyNiAyOC4yMjIxIDEyMy4zNDkgMjkuMjk0QzEyMy44OTggMzAuMzM5OCAxMjQuNjMgMzEuMTYzMyAxMjUuNTQ1IDMxLjc2NDZDMTI2LjQ4NiAzMi4zNjU5IDEyNy41NTggMzIuNjY2NiAxMjguNzYgMzIuNjY2NlpNMTQzLjAyOCAzNlYxNS40MTE0SDE0Ny4wNjdWMTkuNjQ2OEwxNDYuMzYxIDIwLjExNzRDMTQ2LjYyMyAxOS4yMDIzIDE0Ny4xMzMgMTguMzY1NyAxNDcuODkxIDE3LjYwNzVDMTQ4LjY0OSAxNi44MjMyIDE0OS41NTEgMTYuMTk1NyAxNTAuNTk3IDE1LjcyNTFDMTUxLjY0MiAxNS4yMjg0IDE1Mi43MTQgMTQuOTggMTUzLjgxMiAxNC45OEMxNTUuMzgxIDE0Ljk4IDE1Ni42ODggMTUuMjkzNyAxNTcuNzM0IDE1LjkyMTJDMTU4Ljc4IDE2LjUyMjUgMTU5LjU2NCAxNy40NTA2IDE2MC4wODcgMTguNzA1NkMxNjAuNjEgMTkuOTYwNSAxNjAuODcxIDIxLjU0MjIgMTYwLjg3MSAyMy40NTA3VjM2SDE1Ni44MzJWMjMuNzI1M0MxNTYuODMyIDIyLjU0ODggMTU2LjY3NSAyMS41ODE0IDE1Ni4zNjEgMjAuODIzMkMxNTYuMDQ4IDIwLjAzODkgMTU1LjU2NCAxOS40NzY4IDE1NC45MSAxOS4xMzY5QzE1NC4yNTcgMTguNzcwOSAxNTMuNDQ2IDE4LjYxNDEgMTUyLjQ3OSAxOC42NjYzQzE1MS42OTUgMTguNjY2MyAxNTAuOTc2IDE4Ljc5NzEgMTUwLjMyMiAxOS4wNTg1QzE0OS42NjkgMTkuMjkzOCAxNDkuMDkzIDE5LjYzMzcgMTQ4LjU5NyAyMC4wNzgxQzE0OC4xMjYgMjAuNTIyNiAxNDcuNzQ3IDIxLjA0NTUgMTQ3LjQ1OSAyMS42NDY4QzE0Ny4xOTggMjIuMjIyIDE0Ny4wNjcgMjIuODQ5NCAxNDcuMDY3IDIzLjUyOTJWMzZIMTQ1LjA2N0MxNDQuNzI3IDM2IDE0NC4zODcgMzYgMTQ0LjA0OCAzNkMxNDMuNzA4IDM2IDE0My4zNjggMzYgMTQzLjAyOCAzNlpNMTY0Ljc4MiAzNlYxNS40MTE0SDE2OC44MjJWMTkuNjQ2OEwxNjguMTE2IDIwLjExNzRDMTY4LjM3NyAxOS4yMDIzIDE2OC44ODcgMTguMzY1NyAxNjkuNjQ1IDE3LjYwNzVDMTcwLjQwMyAxNi44MjMyIDE3MS4zMDUgMTYuMTk1NyAxNzIuMzUxIDE1LjcyNTFDMTczLjM5NyAxNS4yMjg0IDE3NC40NjkgMTQuOTggMTc1LjU2NyAxNC45OEMxNzcuMTM1IDE0Ljk4IDE3OC40NDMgMTUuMjkzNyAxNzkuNDg4IDE1LjkyMTJDMTgwLjUzNCAxNi41MjI1IDE4MS4zMTkgMTcuNDUwNiAxODEuODQxIDE4LjcwNTZDMTgyLjM2NCAxOS45NjA1IDE4Mi42MjYgMjEuNTQyMiAxODIuNjI2IDIzLjQ1MDdWMzZIMTc4LjU4NlYyMy43MjUzQzE3OC41ODYgMjIuNTQ4OCAxNzguNDMgMjEuNTgxNCAxNzguMTE2IDIwLjgyMzJDMTc3LjgwMiAyMC4wMzg5IDE3Ny4zMTggMTkuNDc2OCAxNzYuNjY1IDE5LjEzNjlDMTc2LjAxMSAxOC43NzA5IDE3NS4yMDEgMTguNjE0MSAxNzQuMjMzIDE4LjY2NjNDMTczLjQ0OSAxOC42NjYzIDE3Mi43MyAxOC43OTcxIDE3Mi4wNzcgMTkuMDU4NUMxNzEuNDIzIDE5LjI5MzggMTcwLjg0OCAxOS42MzM3IDE3MC4zNTEgMjAuMDc4MUMxNjkuODggMjAuNTIyNiAxNjkuNTAxIDIxLjA0NTUgMTY5LjIxNCAyMS42NDY4QzE2OC45NTIgMjIuMjIyIDE2OC44MjIgMjIuODQ5NCAxNjguODIyIDIzLjUyOTJWMzZIMTY2LjgyMkMxNjYuNDgyIDM2IDE2Ni4xNDIgMzYgMTY1LjgwMiAzNkMxNjUuNDYyIDM2IDE2NS4xMjIgMzYgMTY0Ljc4MiAzNlpNMTk2LjE0NSAzNi4zOTIyQzE5NC4wMjcgMzYuMzkyMiAxOTIuMTQ1IDM1Ljk0NzcgMTkwLjQ5OCAzNS4wNTg4QzE4OC44NzcgMzQuMTQzOCAxODcuNTk1IDMyLjkwMTkgMTg2LjY1NCAzMS4zMzMyQzE4NS43MzkgMjkuNzY0NiAxODUuMjgyIDI3Ljk2MDYgMTg1LjI4MiAyNS45MjE0QzE4NS4yODIgMjQuMzAwNCAxODUuNTQzIDIyLjgyMzMgMTg2LjA2NiAyMS40ODk5QzE4Ni41ODkgMjAuMTU2NiAxODcuMzA4IDE5LjAwNjIgMTg4LjIyMyAxOC4wMzg5QzE4OS4xNjQgMTcuMDQ1NCAxOTAuMjc1IDE2LjI4NzIgMTkxLjU1NiAxNS43NjQzQzE5Mi44NjQgMTUuMjE1MyAxOTQuMjc1IDE0Ljk0MDggMTk1Ljc5MiAxNC45NDA4QzE5Ny4xMjUgMTQuOTQwOCAxOTguMzY3IDE1LjIwMjIgMTk5LjUxNyAxNS43MjUxQzIwMC42NjggMTYuMjIxOSAyMDEuNjYxIDE2LjkxNDcgMjAyLjQ5OCAxNy44MDM2QzIwMy4zNiAxOC42OTI1IDIwNC4wMTQgMTkuNzUxMyAyMDQuNDU5IDIwLjk4MDFDMjA0LjkyOSAyMi4xODI4IDIwNS4xNTEgMjMuNTAzIDIwNS4xMjUgMjQuOTQxTDIwNS4wODYgMjYuNjY2NUgxODguMjYyTDE4Ny4zNiAyMy40NTA3SDIwMS41OTZMMjAxLjAwOCAyNC4xMTc0VjIzLjE3NjJDMjAwLjkyOSAyMi4zMTM1IDIwMC42NDEgMjEuNTQyMiAyMDAuMTQ1IDIwLjg2MjVDMTk5LjY0OCAyMC4xODI3IDE5OS4wMjEgMTkuNjQ2OCAxOTguMjYyIDE5LjI1NDZDMTk3LjUwNCAxOC44NjI0IDE5Ni42ODEgMTguNjY2MyAxOTUuNzkyIDE4LjY2NjNDMTk0LjM4IDE4LjY2NjMgMTkzLjE5IDE4Ljk0MDkgMTkyLjIyMyAxOS40ODk5QzE5MS4yNTYgMjAuMDEyOCAxOTAuNTI0IDIwLjc5NzEgMTkwLjAyNyAyMS44NDI5QzE4OS41MyAyMi44NjI1IDE4OS4yODIgMjQuMTMwNSAxODkuMjgyIDI1LjY0NjlDMTg5LjI4MiAyNy4wODQ4IDE4OS41ODIgMjguMzM5NyAxOTAuMTg0IDI5LjQxMTZDMTkwLjc4NSAzMC40NTc0IDE5MS42MzUgMzEuMjY3OSAxOTIuNzMzIDMxLjg0MzFDMTkzLjgzMSAzMi40MTgyIDE5NS4wOTkgMzIuNzA1OCAxOTYuNTM3IDMyLjcwNThDMTk3LjU1NiAzMi43MDU4IDE5OC40OTggMzIuNTM1OSAxOTkuMzYgMzIuMTk2QzIwMC4yNDkgMzEuODU2MSAyMDEuMjA0IDMxLjI0MTcgMjAyLjIyMyAzMC4zNTI4TDIwNC4yNjIgMzMuMjE1NkMyMDMuNjM1IDMzLjg0MzEgMjAyLjg2NCAzNC4zOTIxIDIwMS45NDkgMzQuODYyN0MyMDEuMDYgMzUuMzMzMyAyMDAuMTA2IDM1LjcxMjQgMTk5LjA4NiAzNkMxOTguMDkyIDM2LjI2MTQgMTk3LjExMiAzNi4zOTIyIDE5Ni4xNDUgMzYuMzkyMlpNMjA3Ljk0NiAzNlYxNS40MTE0SDIxMi4wMjVWMjEuODgyMUwyMTEuNjMzIDIwLjMxMzRDMjExLjkyIDE5LjMyIDIxMi40MDQgMTguNDE4IDIxMy4wODQgMTcuNjA3NUMyMTMuNzkgMTYuNzk3IDIxNC41ODcgMTYuMTU2NSAyMTUuNDc2IDE1LjY4NTlDMjE2LjM5MSAxNS4yMTUzIDIxNy4zMzIgMTQuOTggMjE4LjI5OSAxNC45OEMyMTguNzQ0IDE0Ljk4IDIxOS4xNjIgMTUuMDE5MiAyMTkuNTU0IDE1LjA5NzdDMjE5Ljk3MyAxNS4xNzYxIDIyMC4zIDE1LjI2NzYgMjIwLjUzNSAxNS4zNzIyTDIxOS40NzYgMTkuNzY0NEMyMTkuMTYyIDE5LjYzMzcgMjE4LjgwOSAxOS41MjkxIDIxOC40MTcgMTkuNDUwN0MyMTguMDUxIDE5LjM0NjEgMjE3LjY4NSAxOS4yOTM4IDIxNy4zMTkgMTkuMjkzOEMyMTYuNjEzIDE5LjI5MzggMjE1LjkzMyAxOS40Mzc2IDIxNS4yOCAxOS43MjUyQzIxNC42NTIgMTkuOTg2NiAyMTQuMDkgMjAuMzY1NyAyMTMuNTk0IDIwLjg2MjVDMjEzLjEyMyAyMS4zMzMxIDIxMi43NDQgMjEuODk1MiAyMTIuNDU2IDIyLjU0ODhDMjEyLjE2OSAyMy4xNzYyIDIxMi4wMjUgMjMuODY5MSAyMTIuMDI1IDI0LjYyNzJWMzZIMjA3Ljk0NlpNMjMwLjU2OSAzNi4zOTIyQzIyOC41NTYgMzYuMzkyMiAyMjYuNzUyIDM1LjkzNDYgMjI1LjE1NyAzNS4wMTk2QzIyMy41ODggMzQuMDc4NCAyMjIuMzQ2IDMyLjgxMDQgMjIxLjQzMSAzMS4yMTU2QzIyMC41MTYgMjkuNTk0NyAyMjAuMDU5IDI3Ljc1MTUgMjIwLjA1OSAyNS42ODYxQzIyMC4wNTkgMjMuNjIwNyAyMjAuNTE2IDIxLjc5MDYgMjIxLjQzMSAyMC4xOTU4QzIyMi4zNDYgMTguNTc0OCAyMjMuNTg4IDE3LjMwNjggMjI1LjE1NyAxNi4zOTE4QzIyNi43NTIgMTUuNDUwNiAyMjguNTU2IDE0Ljk4IDIzMC41NjkgMTQuOThDMjMyLjU1NiAxNC45OCAyMzQuMzMzIDE1LjQ1MDYgMjM1LjkwMiAxNi4zOTE4QzIzNy40OTcgMTcuMzA2OCAyMzguNzUyIDE4LjU3NDggMjM5LjY2NyAyMC4xOTU4QzI0MC41ODIgMjEuNzkwNiAyNDEuMDM5IDIzLjYyMDcgMjQxLjAzOSAyNS42ODYxQzI0MS4wMzkgMjcuNzUxNSAyNDAuNTgyIDI5LjU5NDcgMjM5LjY2NyAzMS4yMTU2QzIzOC43NTIgMzIuODEwNCAyMzcuNDk3IDM0LjA3ODQgMjM1LjkwMiAzNS4wMTk2QzIzNC4zMzMgMzUuOTM0NiAyMzIuNTU2IDM2LjM5MjIgMjMwLjU2OSAzNi4zOTIyWk0yMzAuNTY5IDMyLjcwNThDMjMxLjc5NyAzMi43MDU4IDIzMi44OTYgMzIuNDA1MiAyMzMuODYzIDMxLjgwMzhDMjM0LjgzIDMxLjE3NjQgMjM1LjU4OCAzMC4zMzk4IDIzNi4xMzcgMjkuMjk0QzIzNi42ODYgMjguMjIyMSAyMzYuOTQ4IDI3LjAxOTQgMjM2LjkyMiAyNS42ODYxQzIzNi45NDggMjQuMzI2NiAyMzYuNjg2IDIzLjEyMzkgMjM2LjEzNyAyMi4wNzgyQzIzNS41ODggMjEuMDA2MyAyMzQuODMgMjAuMTY5NiAyMzMuODYzIDE5LjU2ODNDMjMyLjg5NiAxOC45NjcgMjMxLjc5NyAxOC42NjYzIDIzMC41NjkgMTguNjY2M0MyMjkuMzQgMTguNjY2MyAyMjguMjI5IDE4Ljk4MDEgMjI3LjIzNSAxOS42MDc1QzIyNi4yNjggMjAuMjA4OSAyMjUuNTEgMjEuMDQ1NSAyMjQuOTYxIDIyLjExNzRDMjI0LjQxMiAyMy4xNjMyIDIyNC4xNSAyNC4zNTI3IDIyNC4xNzYgMjUuNjg2MUMyMjQuMTUgMjcuMDE5NCAyMjQuNDEyIDI4LjIyMjEgMjI0Ljk2MSAyOS4yOTRDMjI1LjUxIDMwLjMzOTggMjI2LjI2OCAzMS4xNzY0IDIyNy4yMzUgMzEuODAzOEMyMjguMjI5IDMyLjQwNTIgMjI5LjM0IDMyLjcwNTggMjMwLjU2OSAzMi43MDU4WiIgZmlsbD0idXJsKCNwYWludDBfbGluZWFyXzM2MzdfOTE5KSIvPgo8cGF0aCBkPSJNMjAuMDQ4NiAxMy43NzI4QzE5Ljg1OTEgMTQuMzQxIDE5LjE2MDEgMTQuMzYwOSAxOC45NDU5IDEzLjgwNDNMMTQuMDAyIDAuOTUzMjU2QzEzLjc4NyAwLjM5NDY1NiAxNC4yNzc2IC0wLjE3ODMyIDE0Ljc3MzEgMC4wNTI0ODgxTDE5LjA4ODUgMi4wNjI1NEMxOS4yMzc3IDIuMTMyMDggMTkuNDA1NCAyLjEyOTY5IDE5LjU1MzEgMi4wNTU5MkwyMy41MzQ2IDAuMDY3NTk3OUMyNC4wMTgzIC0wLjE3Mzk2MiAyNC41MTgzIDAuMzY3ODI5IDI0LjMzMDcgMC45MzAzMUwyMC4wNDg2IDEzLjc3MjhaIiBmaWxsPSJ3aGl0ZSIvPgo8ZGVmcz4KPGxpbmVhckdyYWRpZW50IGlkPSJwYWludDBfbGluZWFyXzM2MzdfOTE5IiB4MT0iODAuNSIgeTE9IjIxIiB4Mj0iMTUyIiB5Mj0iMzAiIGdyYWRpZW50VW5pdHM9InVzZXJTcGFjZU9uVXNlIj4KPHN0b3Agc3RvcC1jb2xvcj0id2hpdGUiLz4KPHN0b3Agb2Zmc2V0PSIxIiBzdG9wLWNvbG9yPSIjNDBEODczIi8+CjwvbGluZWFyR3JhZGllbnQ+CjwvZGVmcz4KPC9zdmc+Cg==" alt="Hubannero Logo"/>
+            <div class="header-divider"></div>
+            <a href="https://www.hubannero.com/pricing" target="_blank" class="header-url">www.hubannero.com</a>
+        </header>
+
+        <div class="tab-nav">
+            <button class="tab-btn active" data-tab="editor">Editor</button>
+            <button class="tab-btn" data-tab="export">Export <span id="export-queue-count"></span></button>
+        </div>
+
+        <div id="editor-tab-content" class="tab-content active">
+            <div id="main-grid">
+                <div id="asset-list-container" class="bento-box">
+                    <div id="asset-list-header">
+                        <h3>Layers & Timelines</h3>
+                        <div style="margin-bottom: 12px;">
+                            <label for="total-duration">Total Duration (s) - max 30s</label>
+                            <div style="display: flex; gap: 8px; align-items: flex-end;">
+                                <input type="number" id="total-duration" value="15" step="1" min="1" max="30">
+                                <button id="adjust-duration-btn" class="btn-secondary" style="padding: 6px 12px; white-space: nowrap;">Adjust</button>
+                            </div>
+                        </div>
+                    </div>
+        
+                    <div id="asset-list-wrapper">
+                        <p id="instructions">Select a single frame to begin.</p>
+                        <div id="asset-list"></div>
+                    </div>
+                    
+                    <div id="saved-settings-actions">
+                        <button id="load-settings-btn" class="btn-secondary">Apply Saved</button>
+                        <button id="save-settings-btn" disabled class="btn-primary">Save</button>
+                        <button id="reset-settings-btn" class="btn-secondary">Reset</button>
+                    </div>
+                </div>
+        
+                <div id="preview-box" class="bento-box">
+                    <div id="preview-iframe-container">
+                        <div id="preview-placeholder"><p>Select a frame to see the preview</p></div>
+                        <iframe id="preview-iframe" style="display: none;"></iframe>
+                    </div>
+                    <div id="playback-container">
+                        <div class="playback-controls">
+                            <button id="play-pause-btn" class="btn-secondary" title="Play/Pause" disabled>
+                                <svg id="play-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                                <svg id="pause-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display: none;"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>
+                            </button>
+                            <button id="preview-btn" class="btn-secondary" title="Restart" disabled>
+                                <svg id="restart-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                    <polyline points="1 4 1 10 7 10"></polyline>
+                                    <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path>
+                                </svg>
+                            </button>
+                            <div id="scrubber-track">
+                                <div id="scrubber-progress"></div>
+                                <div id="scrubber-thumb"></div>
+                            </div>
+                            <span id="time-display">0.00s / 15.00s</span>
+                        </div>
+                    </div>
+                    <div id="main-controls-container">
+                        <h3>Global Settings</h3>
+                        <div id="global-controls">
+                            <div class="settings-grid">
+                                <label for="clicktag-url">ClickTAG URL</label>
+                                <input type="text" id="clicktag-url" placeholder="https://example.com">
+        
+                                <label for="stagger-value">Stagger Delay (s)</label>
+                                <div class="control-row">
+                                    <button id="stagger-btn" class="btn-secondary" style="padding: 6px 12px; white-space: nowrap;">Apply</button>
+                                    <input type="number" id="stagger-value" value="0.5" step="0.05" max="30">
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="action-grid">
+                            <label for="loop-toggle">Loop</label>
+                            <div class="action-group">
+                                 <div class="toggle-switch">
+                                    <input type="checkbox" id="loop-toggle" checked/><label for="loop-toggle">Toggle</label>
+                                </div>
+                            </div>
+        
+                            <label></label>
+                            <div class="action-group" style="margin-top: 8px;">
+                                <button id="send-to-export-btn" disabled class="btn-primary" style="width: 100%;">Send to Export</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="export-tab-content" class="tab-content">
+            <div class="bento-box" style="width: 100%; height: 100%;">
+                 <h3>Export Queue</h3>
+                 <div id="export-queue-list">
+                    <p id="export-queue-placeholder">Send a banner from the Editor tab to get started.</p>
+                 </div>
+                 <div class="export-actions">
+                    <div class="action-grid" style="margin-top: 0;">
+                        <label for="export-preset">Export Preset</label>
+                        <select id="export-preset" name="export-preset">
+                            <option value="google-ads" selected>Google Ads / DV360</option>
+                            <option value="iab">Generic IAB</option>
+                            <option value="sizmek">Sizmek (Amazon)</option>
+                            <option value="xandr">Xandr</option>
+                            <option value="gif">GIF Video Export</option>
+                            <option value="mp4">MP4 Video Export</option>
+                        </select>
+                        
+                        <label for="optimize-images-toggle">Optimize Images</label>
+                        <div class="toggle-switch">
+                            <input type="checkbox" id="optimize-images-toggle" checked/><label for="optimize-images-toggle">Toggle</label>
+                        </div>
+
+                        <label for="pro-key">Pro Key</label>
+                        <div class="action-group">
+                            <input type="password" id="pro-key" placeholder="Enter your Pro Key">
+                            <button id="validate-key-btn" class="btn-secondary">Validate</button>
+                            <button id="reset-pro-key-btn" disabled class="btn-secondary" style="font-size: 11px;">Reset</button>
+                            <button id="export-all-btn" disabled class="btn-primary">Export All</button>
+                        </div>
+                        
+
+                    </div>
+                    
+                    <div id="video-export-progress" style="display: none;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <h4 style="margin: 0;">Video Export Progress</h4>
+                                <span style="font-size: 11px; color: var(--text-secondary); font-weight: normal;">(Approx. 40sec)</span>
+                            </div>
+                            <button id="cancel-video-export-btn" class="btn-secondary" style="padding: 4px 12px; font-size: 11px;">Cancel</button>
+                        </div>
+                        <p id="video-progress-text">Preparing export...</p>
+                        <div id="video-progress-bar-outer"><div id="video-progress-bar-inner"></div></div>
+                        <div id="video-export-status" style="margin-top: 8px; font-size: 12px; color: var(--text-secondary);"></div>
+                    </div>
+                    
+                    <div id="progress-section">
+                        <p id="progress-text"></p>
+                        <div id="progress-bar-outer"><div id="progress-bar-inner"></div></div>
+                    </div>
+                    <p id="generate-feedback"></p>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+    document.addEventListener('DOMContentLoaded', () => {
+        // Re-enable environment detection now that variable hoisting is fixed
+        detectEnvironment().then(() => {
+            console.log(`🔗 API Base URL set to: ${API_BASE_URL}`);
+        }).catch(error => {
+            console.warn('Environment detection failed, using localhost:', error);
+        });
+        const assetList = document.getElementById('asset-list');
+        const staggerBtn = document.getElementById('stagger-btn');
+        const staggerValueInput = document.getElementById('stagger-value');
+        const clickTagUrlInput = document.getElementById('clicktag-url');
+        const loopToggle = document.getElementById('loop-toggle');
+        const totalDurationInput = document.getElementById('total-duration');
+        const adjustDurationBtn = document.getElementById('adjust-duration-btn');
+        const previewBtn = document.getElementById('preview-btn');
+        const saveSettingsBtn = document.getElementById('save-settings-btn');
+        const loadSettingsBtn = document.getElementById('load-settings-btn');
+        const resetSettingsBtn = document.getElementById('reset-settings-btn');
+        const generateFeedback = document.getElementById('generate-feedback');
+        const progressSection = document.getElementById('progress-section');
+        const progressText = document.getElementById('progress-text');
+        const progressBarInner = document.getElementById('progress-bar-inner');
+        const previewIframe = document.getElementById('preview-iframe');
+        const previewPlaceholder = document.getElementById('preview-placeholder');
+        const proKeyInput = document.getElementById('pro-key');
+        const instructions = document.getElementById('instructions');
+        const playPauseBtn = document.getElementById('play-pause-btn');
+        const playIcon = document.getElementById('play-icon');
+        const pauseIcon = document.getElementById('pause-icon');
+        const scrubberTrack = document.getElementById('scrubber-track');
+        const scrubberThumb = document.getElementById('scrubber-thumb');
+        const scrubberProgress = document.getElementById('scrubber-progress');
+        const timeDisplay = document.getElementById('time-display');
+        const sendToExportBtn = document.getElementById('send-to-export-btn');
+        const exportAllBtn = document.getElementById('export-all-btn');
+        const exportQueueList = document.getElementById('export-queue-list');
+        const exportQueuePlaceholder = document.getElementById('export-queue-placeholder');
+        const exportQueueCount = document.getElementById('export-queue-count');
+        const exportPresetSelect = document.getElementById('export-preset');
+        const optimizeImagesToggle = document.getElementById('optimize-images-toggle');
+
+        const videoExportProgress = document.getElementById('video-export-progress');
+        const videoProgressText = document.getElementById('video-progress-text');
+        const videoProgressBarInner = document.getElementById('video-progress-bar-inner');
+        const videoExportStatus = document.getElementById('video-export-status');
+        const cancelVideoExportBtn = document.getElementById('cancel-video-export-btn');
+        const validateKeyBtn = document.getElementById('validate-key-btn');
+        const resetProKeyBtn = document.getElementById('reset-pro-key-btn');
+
+
+        // Environment-aware API URL configuration
+        let API_BASE_URL = 'http://localhost:4242'; // Default to localhost for development
+        
+        // Helper function to get API URL (defined after API_BASE_URL)
+        const getApiUrl = (endpoint) => {
+            return `${API_BASE_URL}${endpoint}`;
+        };
+        
+        // Function to test if local development server is running
+        const detectEnvironment = async () => {
+            try {
+                // Try to ping the local development server with a short timeout
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 1000); // 1 second timeout
+                
+                const response = await fetch('http://localhost:4242/health', {
+                    method: 'GET',
+                    signal: controller.signal
+                });
+                
+                clearTimeout(timeoutId);
+                
+                if (response.ok) {
+                    API_BASE_URL = 'http://localhost:4242';
+                    console.log('🔧 Development environment detected - using local server');
+                    return 'development';
+                }
+            } catch (error) {
+                // Local server not reachable, use production
+                console.log('🌐 Production environment detected - using remote server');
+                API_BASE_URL = 'https://hubannero-backend.onrender.com';
+            }
+            return 'production';
+        };
+
+        let assets = [], animationSettings = [], exportQueue = [];
+        let frameName = 'banner', frameBackgroundColor = '#FFFFFF', totalTimelineDuration = 15000;
+        let bannerWidth = 300, bannerHeight = 600;
+        let isPro = false;
+        let copiedAnimation = null;
+        let isPlaying = false, currentTime = 0, animationFrameId = null, lastFrameTime = 0;
+        let autoplayOnReady = false;
+        let mainZipInstance = null;
+        let isVideoExporting = false;
+        
+        const defaultIn =  { style: 'fade-in', delay: 1000,  duration: 1000, easing: 'ease', x: 0, y: 0, scale: 100, opacity: 0, rotation: 0 };
+        const defaultOut = { style: 'none',    delay: 14000, duration: 1000, easing: 'ease', x: 0, y: 0,  scale: 100, opacity: 0, rotation: 0 };
+        const defaultMid = { style: 'none', duration: 1000, delay: 0, intensity: 1.05 };
+        
+        // Function to calculate mid animation position between in and out
+        const calculateMidPosition = (inAnim, outAnim, totalDuration) => {
+            const inEnd = inAnim.delay + inAnim.duration;
+            const outStart = outAnim.delay;
+            const availableSpace = outStart - inEnd;
+            
+            if (availableSpace > 1000) { // At least 1 second of space
+                const midDelay = inEnd + (availableSpace - 1000) / 2; // Center the 1s duration in available space
+                return { delay: Math.max(inEnd, midDelay), duration: 1000 };
+            } else if (availableSpace > 500) { // At least 0.5 seconds
+                return { delay: inEnd, duration: Math.min(1000, availableSpace) };
+            } else {
+                return { delay: inEnd, duration: 500 }; // Minimum duration
+            }
+        };
+        
+        const inAnimOptions = ['none', 'fade-in', 'slide-in-up', 'slide-in-down', 'slide-in-left', 'slide-in-right', 'zoom-in'];
+        const outAnimOptions = ['none', 'fade-out', 'slide-out-up', 'slide-out-down', 'slide-out-left', 'slide-out-right', 'zoom-out'];
+        const midAnimOptions = ['none', 'pulse', 'shake'];
+        const easingOptions = ['ease', 'ease-in', 'ease-out', 'ease-in-out', 'linear'];
+
+        const postMsg = (type, payload = {}) => parent.postMessage({ pluginMessage: { type, ...payload } }, '*');
+        const deepClone = (obj) => JSON.parse(JSON.stringify(obj));
+
+        const updateUIState = () => {
+            const hasAssets = assets.length > 0;
+            instructions.style.display = hasAssets ? 'none' : 'block';
+            previewBtn.disabled = !hasAssets;
+            sendToExportBtn.disabled = !hasAssets;
+            saveSettingsBtn.disabled = !hasAssets;
+            adjustDurationBtn.disabled = !hasAssets;
+            resetSettingsBtn.disabled = !hasAssets;
+            playPauseBtn.disabled = !hasAssets;
+            exportAllBtn.disabled = exportQueue.length === 0;
+            exportQueuePlaceholder.style.display = exportQueue.length === 0 ? 'block' : 'none';
+            exportQueueCount.textContent = exportQueue.length > 0 ? `(${exportQueue.length})` : '';
+        };
+        
+        const updateTimelineLabels = (container, animType, delayMs, durationMs) => {
+            const delayText = (delayMs / 1000).toFixed(1);
+            const durationText = (durationMs / 1000).toFixed(1);
+            const text = `Delay: ${delayText}s, Duration: ${durationText}s`;
+            
+            if (animType === 'in') {
+                const labels = container.querySelector('.timeline-labels');
+                if (labels) labels.querySelector('.timeline-label.left').textContent = text;
+            } else if (animType === 'out') {
+                const labels = container.querySelector('.timeline-labels');
+                if (labels) labels.querySelector('.timeline-label.right').textContent = text;
+            } else if (animType === 'mid') {
+                // Update the fixed bar timing display (centered above the track)
+                const barTimingDisplayFixed = container.querySelector('.bar-timing-display-fixed');
+                
+                if (barTimingDisplayFixed) {
+                    barTimingDisplayFixed.textContent = `Delay: ${delayText}s, Duration: ${durationText}s`;
+                } else {
+                    // Create the display if it doesn't exist
+                    const newDisplay = document.createElement('div');
+                    newDisplay.className = 'bar-timing-display-fixed';
+                    newDisplay.textContent = `Delay: ${delayText}s, Duration: ${durationText}s`;
+                    container.insertBefore(newDisplay, container.firstChild);
+                }
+            }
+        };
+        
+        // MODIFIED: This function now dynamically shows the weight based on the optimize toggle
+        const renderExportQueue = () => {
+            exportQueueList.innerHTML = '';
+            exportQueueList.appendChild(exportQueuePlaceholder);
+            const isOptimizeEnabled = optimizeImagesToggle.checked;
+
+            if (exportQueue.length === 0) {
+                exportQueuePlaceholder.style.display = 'block';
+            } else {
+                exportQueuePlaceholder.style.display = 'none';
+                const usedDisplayNames = {};
+                exportQueue.forEach((item, index) => {
+                    let baseName = item.bannerData.frameName, finalDisplayName = baseName, counter = 2;
+                    while (usedDisplayNames[finalDisplayName.toLowerCase()]) finalDisplayName = `${baseName}_${counter++}`;
+                    usedDisplayNames[finalDisplayName.toLowerCase()] = true;
+                    
+                    const weightToShow = isOptimizeEnabled ? item.weights.optimized : item.weights.unoptimized;
+                    const weightInKb = (weightToShow / 1024).toFixed(1);
+                    const isOverweight = weightToShow > 150 * 1024; // 150KB limit
+                    const weightHtml = `<span class="weight ${isOverweight ? 'is-overweight' : ''}" title="Total image weight">${weightInKb} KB</span>`;
+
+                    const itemEl = document.createElement('div');
+                    itemEl.className = 'export-queue-item';
+                    itemEl.innerHTML = `<span class="name" title="${finalDisplayName}">${finalDisplayName}</span><span class="dims">${item.bannerData.bannerWidth}x${item.bannerData.bannerHeight}</span>${weightHtml}<button class="remove-btn" data-index="${index}" title="Remove from queue"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg></button>`;
+                    exportQueueList.appendChild(itemEl);
+                });
+            }
+            updateUIState();
+        };
+        
+        exportQueueList.addEventListener('click', (e) => {
+            const removeBtn = e.target.closest('.remove-btn');
+            if (removeBtn) {
+                exportQueue.splice(parseInt(removeBtn.dataset.index, 10), 1);
+                renderExportQueue();
+            }
+        });
+
+        const updateTotalTimeline = () => {
+            totalTimelineDuration = parseFloat(totalDurationInput.value) * 1000;
+            updateTimeDisplay();
+        };
+
+        const renderAssets = (w, h) => {
+            const openDropdownId = document.querySelector('.toggle-settings-btn.is-open')?.closest('.asset-item')?.dataset.assetId;
+            updateTotalTimeline();
+            assetList.innerHTML = '';
+            [...assets].reverse().forEach(asset => {
+                const setting = animationSettings.find(s => s.id === asset.id);
+                if (!setting) return;
+                const assetDiv = document.createElement('div');
+                assetDiv.className = 'asset-item';
+                assetDiv.dataset.assetId = asset.id;
+                const createSelect = (options, selected) => options.map(o => `<option value="${o}" ${o === selected ? 'selected' : ''}>${o.replace(/-/g, ' ')}</option>`).join('');
+                const createMotionEditor = (sIn, sOut, asset, w, h) => {
+                    const containerSize = 130, aspectRatio = w / h;
+                    let editorWidth, editorHeight;
+                    if (w > h) { editorWidth = containerSize; editorHeight = containerSize / aspectRatio; } 
+                    else { editorHeight = containerSize; editorWidth = containerSize * aspectRatio; }
+                    const assetCenterX = (asset.x + asset.width / 2) / w * editorWidth, assetCenterY = (asset.y + asset.height / 2) / h * editorHeight;
+                    const startX = assetCenterX + (sIn.x / w) * editorWidth, startY = assetCenterY + (sIn.y / h) * editorHeight;
+                    const endX = assetCenterX + (sOut.x / w) * editorWidth, endY = assetCenterY + (sOut.y / h) * editorHeight;
+                    const thumbTop = (asset.y / h) * 100, thumbLeft = (asset.x / w) * 100;
+                    const thumbWidth = (asset.width / w) * 100, thumbHeight = (asset.height / h) * 100;
+                    return `<div class="motion-editor-container"><div class="motion-editor" style="width:${editorWidth}px;height:${editorHeight}px;"><img src="${asset.thumbnail}" style="position:absolute;top:${thumbTop}%;left:${thumbLeft}%;width:${thumbWidth}%;height:${thumbHeight}%;opacity:0.3;object-fit:contain;"/><svg class="motion-path-svg"><line class="start-path" x1="${startX}" y1="${startY}" x2="${assetCenterX}" y2="${assetCenterY}"/><line class="end-path" x1="${assetCenterX}" y1="${assetCenterY}" x2="${endX}" y2="${endY}"/></svg><div class="center-point" style="left:${assetCenterX}px;top:${assetCenterY}px;"></div><div class="handle start" data-handle-type="in" style="left:${startX}px;top:${startY}px;"></div><div class="handle end" data-handle-type="out" style="left:${endX}px;top:${endY}px;"></div></div></div>`;
+                };
+                const inStyle = `left:${(setting.in.delay/totalTimelineDuration)*100}%;width:${(setting.in.duration/totalTimelineDuration)*100}%;`;
+                const outStyle = `left:${(setting.out.delay/totalTimelineDuration)*100}%;width:${(setting.out.duration/totalTimelineDuration)*100}%;`;
+                const midStyle = `left:${(setting.mid.delay/totalTimelineDuration)*100}%;width:${(setting.mid.duration/totalTimelineDuration)*100}%;`;
+                const formatTimingText = (delay, duration) => {
+                    const delayText = (delay/1000).toFixed(1);
+                    const durationText = (duration/1000).toFixed(1);
+                    return `Delay: ${delayText}s, Duration: ${durationText}s`;
+                };
+                const inTimingText = formatTimingText(setting.in.delay, setting.in.duration);
+                const outTimingText = formatTimingText(setting.out.delay, setting.out.duration);
+                const midBarTimingText = `Delay: ${(setting.mid.delay/1000).toFixed(1)}s, Duration: ${(setting.mid.duration/1000).toFixed(1)}s`;
+                const isCustomMode = setting.in.style === 'custom';
+                const getOpacity = (val) => val !== null && val !== undefined ? val : 0;
+                // Create warning icon if asset has errors
+                const warningIcon = asset.hasError ? 
+                    `<span class="warning-icon warning-tooltip" data-tooltip="${asset.errorMessage || 'This layer could not be processed'}">⚠️</span>` : '';
+                
+                assetDiv.innerHTML = `<div class="asset-header"><img src="${asset.thumbnail}" class="thumbnail" alt="thumbnail"/><div class="asset-name" title="${asset.name}"><span>${asset.name}</span>${warningIcon}</div><div class="layer-actions"><button class="copy-btn" title="Copy Animations"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg></button><button class="paste-btn" title="Paste Animations" ${copiedAnimation?'':'disabled'}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path><rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect></svg></button><button class="toggle-settings-btn" title="Toggle Settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M6 9L12 15L18 9" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button></div></div><div class="timeline-container" data-asset-id="${asset.id}"><div class="bar-timing-display-fixed">${midBarTimingText}</div><div class="timeline-track"><div class="timeline-bar in-anim" style="${inStyle}" data-anim-type="in"><div class="timeline-handle left-handle"></div><div class="timeline-handle right-handle"></div></div><div class="timeline-bar mid-anim" style="${midStyle}" data-anim-type="mid"><div class="timeline-handle left-handle"></div><div class="timeline-handle right-handle"></div></div><div class="timeline-bar out-anim" style="${outStyle}" data-anim-type="out"><div class="timeline-handle left-handle"></div><div class="timeline-handle right-handle"></div></div></div><div class="timeline-labels"><div class="timeline-label left">${inTimingText}</div><div class="timeline-label right">${outTimingText}</div></div></div><div class="settings-dropdown"><div class="anim-type-toggle"><button data-mode="preset" class="${!isCustomMode?'active':''}">Preset</button><button data-mode="custom" class="${isCustomMode?'active':''}">Custom</button></div><div style="display:${isCustomMode?'block':'none'}">${createMotionEditor(setting.in,setting.out,asset,w,h)}</div><div class="grid"><div class="anim-controls" data-anim-type="in"><h4>In (Start State)</h4><div class="preset-controls ${!isCustomMode?'active':''}"><label>Style:</label><select data-prop="style" class="style-select">${createSelect(inAnimOptions,setting.in.style)}</select></div><div class="custom-controls ${isCustomMode?'active':''}"><div class="pos-inputs"><label>X:</label><input type="number" value="${setting.in.x||0}" data-prop="x"><label>Y:</label><input type="number" value="${setting.in.y||0}" data-prop="y"></div><label>Scale</label><div class="slider-group"><input type="range" min="0" max="200" value="${setting.in.scale||100}" data-prop="scale" class="slider"><input type="number" value="${setting.in.scale||100}" class="slider-value"><span>%</span></div><label>Opacity</label><div class="slider-group"><input type="range" min="0" max="100" value="${getOpacity(setting.in.opacity)}" data-prop="opacity" class="slider"><input type="number" value="${getOpacity(setting.in.opacity)}" class="slider-value"><span>%</span></div><label>Rotation</label><div class="slider-group"><input type="range" min="-360" max="360" value="${setting.in.rotation||0}" data-prop="rotation" class="slider"><input type="number" value="${setting.in.rotation||0}" class="slider-value"><span>deg</span></div></div><hr class="settings-divider"><label>Easing:</label><select data-prop="easing">${createSelect(easingOptions,setting.in.easing)}</select><label>Delay (s):</label><input type="number" data-prop="delay" value="${setting.in.delay/1000}" step="0.01" max="30"><label>Duration (s):</label><input type="number" data-prop="duration" value="${setting.in.duration/1000}" step="0.01" max="30"></div><div class="anim-controls" data-anim-type="out"><h4>Out (End State)</h4><div class="preset-controls ${!isCustomMode?'active':''}"><label>Style:</label><select data-prop="style" class="style-select">${createSelect(outAnimOptions,setting.out.style)}</select></div><div class="custom-controls ${isCustomMode?'active':''}"><div class="pos-inputs"><label>X:</label><input type="number" value="${setting.out.x||0}" data-prop="x"><label>Y:</label><input type="number" value="${setting.out.y||0}" data-prop="y"></div><label>Scale</label><div class="slider-group"><input type="range" min="0" max="200" value="${setting.out.scale||100}" data-prop="scale" class="slider"><input type="number" value="${setting.out.scale||100}" class="slider-value"><span>%</span></div><label>Opacity</label><div class="slider-group"><input type="range" min="0" max="100" value="${getOpacity(setting.out.opacity)}" data-prop="opacity" class="slider"><input type="number" value="${getOpacity(setting.out.opacity)}" class="slider-value"><span>%</span></div><label>Rotation</label><div class="slider-group"><input type="range" min="-360" max="360" value="${setting.out.rotation||0}" data-prop="rotation" class="slider"><input type="number" value="${setting.out.rotation||0}" class="slider-value"><span>deg</span></div></div><hr class="settings-divider"><label>Easing:</label><select data-prop="easing">${createSelect(easingOptions,setting.out.easing)}</select><label>Delay (s):</label><input type="number" data-prop="delay" value="${setting.out.delay/1000}" step="0.01" max="30"><label>Duration (s):</label><input type="number" data-prop="duration" value="${setting.out.duration/1000}" step="0.01" max="30"></div></div><hr class="settings-divider"><h4>Attention Effect</h4><div class="anim-controls" data-anim-type="mid"><div><label>Style:</label><select data-prop="style">${createSelect(midAnimOptions,setting.mid.style)}</select></div><div style="margin-top:12px;"><label>Intensity</label><div class="grid" style="grid-template-columns:1fr auto;gap:8px;align-items:center;"><div class="slider-group"><span style="font-size:10px;">Soft</span><input type="range" min="1.05" max="2" value="${setting.mid.intensity||1.05}" step="0.05" data-prop="intensity" class="slider"><span style="font-size:10px;">Heavy</span></div><div style="display:flex;align-items:center;gap:2px;"><input type="number" value="${Math.round(((setting.mid.intensity||1.05)-1)*100)}" step="5" min="5" max="100" class="slider-value" style="width:50px;"><span>%</span></div></div></div><hr class="settings-divider"><div style="font-weight:600;margin-bottom:8px;color:var(--text-secondary);font-size:12px;">Timing</div><div class="grid" style="grid-template-columns:1fr 1fr;gap:12px;"><div><label>Delay (s):</label><input type="number" data-prop="delay" value="${(setting.mid.delay||0)/1000}" step="0.01" max="30"></div><div><label>Duration (s):</label><input type="number" data-prop="duration" value="${(setting.mid.duration||1000)/1000}" step="0.01" max="30"></div></div></div></div>`;
+                assetList.appendChild(assetDiv);
+            });
+            if (openDropdownId) { const item = assetList.querySelector(`.asset-item[data-asset-id="${openDropdownId}"]`); if (item) { item.querySelector('.settings-dropdown').style.display = 'block'; item.querySelector('.toggle-settings-btn').classList.add('is-open'); } }
+            updateUIState();
+        };
+
+        const showProgress = (text, p) => { progressSection.style.display='block'; progressText.textContent=text; progressBarInner.style.width=`${p*100}%`; };
+        const hideProgress = () => { progressSection.style.display = 'none'; generateFeedback.textContent = ''; }
+
+        const triggerPreview = () => { if (assets.length === 0) return; generateFeedback.textContent = ''; postMsg('generate-preview', { settings: animationSettings, assets, bannerWidth, bannerHeight, backgroundColor: frameBackgroundColor, clickTag: clickTagUrlInput.value, loop: loopToggle.checked, totalDuration: totalTimelineDuration }); };
+        
+        const refreshAndPlay = () => { currentTime = 0; isPlaying = true; autoplayOnReady = true; playIcon.style.display = 'none'; pauseIcon.style.display = 'block'; updateScrubberPosition(); updateTimeDisplay(); cancelAnimationFrame(animationFrameId); triggerPreview(); };
+        
+        const refreshPreview = () => { 
+            // Update preview without restarting playback
+            generateFeedback.textContent = ''; 
+            const wasPlaying = isPlaying;
+            const savedTime = currentTime;
+            autoplayOnReady = false; // Don't auto-restart
+            postMsg('generate-preview', { settings: animationSettings, assets, bannerWidth, bannerHeight, backgroundColor: frameBackgroundColor, clickTag: clickTagUrlInput.value, loop: loopToggle.checked, totalDuration: totalTimelineDuration });
+        };
+
+        const applyLoadedSettings = (savedSettings) => {
+            clickTagUrlInput.value = savedSettings.clickTag || '';
+            loopToggle.checked = savedSettings.loop === undefined ? true : savedSettings.loop;
+            totalDurationInput.value = savedSettings.totalDuration ? savedSettings.totalDuration / 1000 : 30;
+            if (savedSettings.animations) {
+                animationSettings.forEach(cs => { const sa = savedSettings.animations.find(a => a.name === cs.name); if(sa){ cs.in = deepClone(sa.in); cs.mid = deepClone(sa.mid||{...defaultMid}); cs.out = deepClone(sa.out); }});
+            }
+            renderAssets(bannerWidth, bannerHeight);
+            refreshAndPlay();
+        };
+        
+        const updateSettingsFromUI = (assetId) => {
+            const item = assetList.querySelector(`.asset-item[data-asset-id="${assetId}"]`); if (!item) return;
+            const setting = animationSettings.find(s => s.id === assetId); if (!setting) return;
+            const isCustom = item.querySelector('[data-mode="custom"]').classList.contains('active');
+            item.querySelectorAll('.anim-controls').forEach(cg => {
+                const animType = cg.dataset.animType;
+                if (animType === 'in' || animType === 'out') {
+                    setting[animType].style = isCustom ? 'custom' : cg.querySelector('.preset-controls .style-select').value;
+                    if(isCustom) cg.querySelectorAll('.custom-controls [data-prop]').forEach(i => { setting[animType][i.dataset.prop] = (i.type.match(/number|range/)) ? parseFloat(i.value) : i.value; });
+                    setting[animType].easing = cg.querySelector('select[data-prop="easing"]').value;
+                    setting[animType].delay = Math.max(0, Math.round(parseFloat(cg.querySelector('input[data-prop="delay"]').value) * 1000));
+                    setting[animType].duration = Math.max(0, Math.round(parseFloat(cg.querySelector('input[data-prop="duration"]').value) * 1000));
+                    
+                    // Update timeline bar position, width, and labels
+                    const timelineContainer = item.querySelector('.timeline-container');
+                    const timelineBar = timelineContainer && timelineContainer.querySelector(`.timeline-bar[data-anim-type="${animType}"]`);
+                    if (timelineBar) {
+                        const leftPercent = (setting[animType].delay / totalTimelineDuration) * 100;
+                        const widthPercent = (setting[animType].duration / totalTimelineDuration) * 100;
+                        timelineBar.style.left = `${leftPercent}%`;
+                        timelineBar.style.width = `${widthPercent}%`;
+                        updateTimelineLabels(timelineContainer, animType, setting[animType].delay, setting[animType].duration);
+                    }
+                } else if (animType === 'mid') {
+                    cg.querySelectorAll('[data-prop]').forEach(i => { 
+                        let v = (i.type.match(/number|range/))?parseFloat(i.value):i.value; 
+                        if(i.dataset.prop==='duration' || i.dataset.prop==='delay')v=Math.max(0,Math.round(v*1000)); 
+                        // Special handling for intensity: convert percentage back to 1.05-2 range
+                        if(i.dataset.prop==='intensity' && i.type==='number' && i.nextElementSibling && i.nextElementSibling.textContent === '%') {
+                            v = Math.max(1.05, (v / 100) + 1); // Convert from 5-100% to 1.05-2 range
+                        }
+                        setting[animType][i.dataset.prop] = v; 
+                    });
+                }
+            });
+        };
+
+        window.onmessage = (event) => {
+            const msg = event.data.pluginMessage; if (!msg) return;
+            switch (msg.type) {
+                case 'selection-update':
+                    bannerWidth = msg.bannerWidth || 300; bannerHeight = msg.bannerHeight || 600; frameName = msg.frameName || 'banner'; frameBackgroundColor = msg.backgroundColor || '#FFFFFF';
+                    
+                    if (msg.isLoading) {
+                        // Show loading state
+                        assets = [];
+                        animationSettings = [];
+                        renderAssets(bannerWidth, bannerHeight);
+                        instructions.style.display = 'block';
+                        instructions.innerHTML = `Loading layers... (0/${msg.totalLayers || 0})`;
+                        previewIframe.style.display = 'none'; 
+                        previewPlaceholder.style.display = 'block';
+                    } else {
+                        // Handle empty frame or no selection
+                        assets = msg.assets || [];
+                        animationSettings = assets.map(a => {
+                            const inAnim = {...defaultIn};
+                            const outAnim = {...defaultOut};
+                            const midPos = calculateMidPosition(inAnim, outAnim, 15000);
+                            return { id: a.id, name: a.name, in: inAnim, out: outAnim, mid: {...defaultMid, ...midPos} };
+                        });
+                        if (assets.length > 0) { 
+                            const val = parseFloat(staggerValueInput.value) * 1000; 
+                            [...assets].reverse().forEach((a, i) => { 
+                                const s=animationSettings.find(s=>s.id===a.id); 
+                                if(s) {
+                                    s.in.delay=1000+(i*val);
+                                    // Recalculate mid position after stagger
+                                    const midPos = calculateMidPosition(s.in, s.out, 15000);
+                                    s.mid.delay = midPos.delay;
+                                    s.mid.duration = midPos.duration;
+                                }
+                            }); 
+                            renderAssets(bannerWidth,bannerHeight); refreshAndPlay(); 
+                        } else { 
+                            renderAssets(bannerWidth,bannerHeight); 
+                        }
+                        instructions.style.display = assets.length > 0 ? 'none' : 'block';
+                        if (msg.isEmpty) instructions.textContent = `Frame "${frameName}" is empty.`; else if (assets.length === 0) instructions.textContent = 'Select a single frame to begin.';
+                        previewIframe.style.display = assets.length > 0 ? 'block' : 'none'; previewPlaceholder.style.display = assets.length > 0 ? 'none' : 'block';
+                    }
+                    break;
+                case 'layer-thumbnail-ready':
+                    // Add layer incrementally as thumbnail is ready
+                    const newAsset = msg.asset;
+                    assets.push(newAsset);
+                    
+                    // Create animation settings for new layer
+                    const inAnim = {...defaultIn};
+                    const outAnim = {...defaultOut};
+                    const midPos = calculateMidPosition(inAnim, outAnim, 15000);
+                    animationSettings.push({ id: newAsset.id, name: newAsset.name, in: inAnim, out: outAnim, mid: {...defaultMid, ...midPos} });
+                    
+                    // Update stagger delays
+                    const val = parseFloat(staggerValueInput.value) * 1000; 
+                    [...assets].reverse().forEach((a, i) => { 
+                        const s=animationSettings.find(s=>s.id===a.id); 
+                        if(s) {
+                            s.in.delay=1000+(i*val);
+                            const midPos = calculateMidPosition(s.in, s.out, 15000);
+                            s.mid.delay = midPos.delay;
+                            s.mid.duration = midPos.duration;
+                        }
+                    });
+                    
+                    // Re-render assets list to show new layer
+                    renderAssets(bannerWidth, bannerHeight);
+                    
+                    // Update loading progress
+                    instructions.innerHTML = `Loading layers... (${msg.progress}/${msg.total})`;
+                    break;
+                case 'selection-complete':
+                    // All thumbnails are ready, final setup
+                    assets = msg.assets || [];
+                    animationSettings = assets.map(a => {
+                        const inAnim = {...defaultIn};
+                        const outAnim = {...defaultOut};
+                        const midPos = calculateMidPosition(inAnim, outAnim, 15000);
+                        return { id: a.id, name: a.name, in: inAnim, out: outAnim, mid: {...defaultMid, ...midPos} };
+                    });
+                    
+                    if (assets.length > 0) { 
+                        const val = parseFloat(staggerValueInput.value) * 1000; 
+                        [...assets].reverse().forEach((a, i) => { 
+                            const s=animationSettings.find(s=>s.id===a.id); 
+                            if(s) {
+                                s.in.delay=1000+(i*val);
+                                const midPos = calculateMidPosition(s.in, s.out, 15000);
+                                s.mid.delay = midPos.delay;
+                                s.mid.duration = midPos.duration;
+                            }
+                        }); 
+                        renderAssets(bannerWidth,bannerHeight); refreshAndPlay(); 
+                        instructions.style.display = 'none';
+                        previewIframe.style.display = 'block'; 
+                        previewPlaceholder.style.display = 'none';
+                    }
+                    break;
+                case 'preview-html':
+                    previewIframe.style.width = `${msg.width}px`; previewIframe.style.height = `${msg.height}px`;
+                    const scale = Math.min(1,(previewIframe.parentElement.clientWidth-20)/msg.width,(previewIframe.parentElement.clientHeight-20)/msg.height);
+                    previewIframe.style.transform = `scale(${scale > 0 ? scale : 1})`;
+                    previewIframe.srcdoc = msg.html; previewIframe.style.display = 'block'; previewPlaceholder.style.display = 'none';
+                    break;
+                case 'iframe-ready':
+                    if (autoplayOnReady) { autoplayOnReady = false; lastFrameTime = performance.now(); cancelAnimationFrame(animationFrameId); previewIframe.contentWindow.postMessage({type:'SEEK',time:0},'*'); previewIframe.contentWindow.postMessage({type:'PLAY'},'*'); animationFrameId = requestAnimationFrame(animationLoop); } 
+                    else { previewIframe.contentWindow.postMessage({type:'SEEK',time:currentTime},'*'); if (isPlaying) previewIframe.contentWindow.postMessage({type:'PLAY'},'*'); }
+                    break;
+                 
+                 // NEW: Receives the pre-calculated weights and adds the item to the queue.
+                 case 'queue-item-data-received':
+                    exportQueue.push({ 
+                        bannerData: msg.bannerData,
+                        weights: msg.weights
+                    });
+                    sendToExportBtn.disabled = false;
+                    sendToExportBtn.textContent = 'Send to Export';
+                    renderExportQueue();
+                    document.querySelector('.tab-btn[data-tab="export"]').click();
+                    break;
+
+                 case 'banner-data-for-zip':
+                    const bannerInfo = exportQueue[msg.index].bannerData;
+                    const zip = new JSZip();
+                    zip.file('index.html', msg.html);
+
+                    if (msg.manifest) {
+                        const manifestFilename = msg.exportPreset === 'sizmek' ? 'ad.json' : 'Manifest.json';
+                        zip.file(manifestFilename, msg.manifest);
+                    }
+
+                    if (msg.backupImage) {
+                        zip.file('backup.png', msg.backupImage, {base64: true});
+                    }
+
+                    const imgFolder = zip.folder('images');
+                    msg.images.forEach(img => imgFolder.file(img.name, img.data, {base64: true}));
+                    
+                    zip.generateAsync({type:"blob"}).then(blob => {
+                        mainZipInstance.file(bannerInfo.finalZipName, blob);
+                        
+                        const nextIndex = msg.index + 1;
+                        if (nextIndex < exportQueue.length) { 
+                            showProgress(`Zipping ${nextIndex+1} of ${exportQueue.length}: ${exportQueue[nextIndex].bannerData.frameName}`, nextIndex/exportQueue.length); 
+                            postMsg('export-single-banner', {
+                                bannerData: exportQueue[nextIndex].bannerData, 
+                                index: nextIndex,
+                                optimize: optimizeImagesToggle.checked,
+                                exportPreset: exportPresetSelect.value
+                            }); 
+                        } else { 
+                            showProgress('Finalizing export...', 0.99); 
+                            const today = new Date().toISOString().slice(0,10); 
+                            mainZipInstance.generateAsync({type:"blob"}).then(function(content) { 
+                                const link = document.createElement('a'); 
+                                link.href = URL.createObjectURL(content); 
+                                link.download = `hubannero_${today}.zip`; 
+                                document.body.appendChild(link); 
+                                link.click(); 
+                                document.body.removeChild(link); 
+                                URL.revokeObjectURL(link.href); 
+                                hideProgress(); 
+                                exportAllBtn.disabled = false; 
+                                generateFeedback.textContent = '✅ Export complete!'; 
+                                setTimeout(() => { generateFeedback.textContent = ''}, 3000); 
+                            }); 
+                        }
+                    });
+                    break; 
+                case 'generation-error': 
+                    generateFeedback.textContent=msg.error; 
+                    hideProgress(); 
+                    exportAllBtn.disabled=false; 
+                    sendToExportBtn.disabled = false; 
+                    sendToExportBtn.textContent = 'Send to Export'; 
+                    // If an error happens mid-batch, stop the process
+                    if (msg.index !== undefined) {
+                        console.error(`Stopped batch export at index ${msg.index} due to an error.`);
+                    }
+                    break;
+                case 'preview-error':
+                    generateFeedback.textContent=msg.error; 
+                    break;
+                    
+                // Video Export Message Handlers
+                case 'video-export-progress':
+                    if (msg.stage === 'preparing') {
+                        videoProgressText.textContent = 'Preparing frames for capture...';
+                        videoProgressBarInner.classList.add('indeterminate');
+                        videoProgressBarInner.style.width = '0%'; // Reset width since indeterminate overrides it
+                        videoExportStatus.textContent = 'Setting up animation capture';
+                    } else if (msg.stage === 'capturing') {
+                        videoProgressBarInner.classList.remove('indeterminate'); // Switch to determinate progress
+                        videoProgressText.textContent = `Capturing frame ${msg.frame || 0} of ${msg.totalFrames || 0}`;
+                        const progress = Math.min(80, (msg.progress || 0) * 0.8); // Reserve 20% for upload
+                        videoProgressBarInner.style.width = `${progress}%`;
+                        videoExportStatus.textContent = `${Math.round(msg.progress || 0)}% complete`;
+                    }
+                    break;
+                    
+                case 'video-frames-captured':
+                    videoProgressText.textContent = 'All frames captured! Preparing upload...';
+                    videoProgressBarInner.style.width = '80%';
+                    videoExportStatus.textContent = 'Frames ready for processing';
+                    
+                    // Upload frames to server
+                    uploadFramesToServer(
+                        msg.frames, 
+                        msg.format, 
+                        msg.frameDuration, 
+                        msg.totalDuration, 
+                        msg.filename
+                    );
+                    break;
+                    
+                case 'video-export-error':
+                    videoProgressText.textContent = 'Export failed';
+                    videoExportStatus.textContent = msg.error;
+                    generateFeedback.textContent = `Error: ${msg.error}`;
+                    resetVideoExportUI();
+                    break;
+                    
+                case 'settings-loaded': if (msg.settings) applyLoadedSettings(msg.settings); break;
+                case 'pro-status-loaded': 
+                    if (msg.isPro) { 
+                        isPro = true; 
+                        setProKeyActiveState();
+                    } else {
+                        setInitialProKeyState();
+                    } break;
+            }
+        };
+
+        // NEW: When the optimize toggle changes, re-render the queue to update weights
+        optimizeImagesToggle.addEventListener('change', renderExportQueue);
+
+        document.querySelectorAll('.tab-btn').forEach(b => b.addEventListener('click', () => { document.querySelectorAll('.tab-btn, .tab-content').forEach(el=>el.classList.remove('active')); b.classList.add('active'); document.getElementById(`${b.dataset.tab}-tab-content`).classList.add('active'); }));
+
+        const updateScrubberPosition = () => {
+            const percentage = (currentTime/totalTimelineDuration)*100;
+            scrubberThumb.style.left = `${percentage}%`;
+            scrubberProgress.style.width = `${percentage}%`;
+        };
+        const updateTimeDisplay = () => timeDisplay.textContent = `${(currentTime/1000).toFixed(2)}s / ${(totalTimelineDuration/1000).toFixed(2)}s`;
+        
+        const animationLoop = (timestamp) => {
+            if (!isPlaying) return; if (!lastFrameTime) lastFrameTime = timestamp; currentTime += timestamp - lastFrameTime;
+            if (currentTime >= totalTimelineDuration) {
+                if (loopToggle.checked) { currentTime = 0; if(previewIframe.contentWindow){ previewIframe.contentWindow.postMessage({type:'SEEK',time:0},'*'); previewIframe.contentWindow.postMessage({type:'PLAY'},'*'); }} 
+                else { currentTime = totalTimelineDuration; isPlaying = false; playIcon.style.display='block'; pauseIcon.style.display='none'; cancelAnimationFrame(animationFrameId); animationFrameId=null; }
+            }
+            updateScrubberPosition(); updateTimeDisplay(); lastFrameTime = timestamp; if(isPlaying) animationFrameId = requestAnimationFrame(animationLoop);
+        };
+
+        playPauseBtn.addEventListener('click', () => {
+            isPlaying = !isPlaying; playIcon.style.display = isPlaying?'none':'block'; pauseIcon.style.display = isPlaying?'block':'none';
+            if (isPlaying) { lastFrameTime=performance.now(); if(currentTime>=totalTimelineDuration)currentTime=0; previewIframe.contentWindow.postMessage({type:'SEEK',time:currentTime},'*'); previewIframe.contentWindow.postMessage({type:'PLAY'},'*'); animationFrameId = requestAnimationFrame(animationLoop); } 
+            else { previewIframe.contentWindow.postMessage({type:'PAUSE'},'*'); cancelAnimationFrame(animationFrameId); animationFrameId = null; }
+        });
+
+        let scrubTimeout = null;
+        let lastScrubTime = 0;
+        let pendingSeekTime = null;
+        
+        const scrub = (e, immediate = false) => { 
+            const rect=scrubberTrack.getBoundingClientRect(); 
+            currentTime=Math.max(0,Math.min(1,(e.clientX-rect.left)/rect.width))*totalTimelineDuration; 
+            updateScrubberPosition(); 
+            updateTimeDisplay(); 
+            
+            // Always update the pending seek time
+            pendingSeekTime = currentTime;
+            
+            if (immediate) {
+                // Cancel any pending animation frame and seek immediately
+                if (scrubTimeout) {
+                    cancelAnimationFrame(scrubTimeout);
+                    scrubTimeout = null;
+                }
+                previewIframe.contentWindow.postMessage({type:'SEEK',time:currentTime},'*');
+                lastScrubTime = performance.now();
+                pendingSeekTime = null;
+            } else {
+                // Use requestAnimationFrame for smoother updates
+                if (!scrubTimeout) {
+                    scrubTimeout = requestAnimationFrame(() => {
+                        if (pendingSeekTime !== null) {
+                            previewIframe.contentWindow.postMessage({type:'SEEK',time:pendingSeekTime},'*');
+                            lastScrubTime = performance.now();
+                            pendingSeekTime = null;
+                        }
+                        scrubTimeout = null;
+                    });
+                }
+            }
+        };
+        
+        scrubberTrack.addEventListener('mousedown', (e) => {
+            if(isPlaying){isPlaying=false;playIcon.style.display='block';pauseIcon.style.display='none';previewIframe.contentWindow.postMessage({type:'PAUSE'},'*');cancelAnimationFrame(animationFrameId);animationFrameId=null;}
+            
+            // Disable transitions during drag for responsiveness
+            scrubberProgress.style.transition = 'none';
+            scrubberThumb.style.transition = 'none';
+            
+            scrub(e, true); // Immediate seek on mousedown
+            
+            const onMouseMove=(me)=>scrub(me, false); // Throttled during drag
+            const onMouseUp=(me)=>{
+                // Always send final position immediately
+                scrub(me, true); // Immediate seek on mouseup
+                
+                // Clean up any pending seek
+                if (scrubTimeout) {
+                    cancelAnimationFrame(scrubTimeout);
+                    scrubTimeout = null;
+                }
+                pendingSeekTime = null;
+                
+                // Re-enable transitions
+                scrubberProgress.style.transition = '';
+                scrubberThumb.style.transition = '';
+                
+                document.removeEventListener('mousemove',onMouseMove);
+            };
+            document.addEventListener('mousemove',onMouseMove); 
+            document.addEventListener('mouseup',onMouseUp,{once:true});
+        });
+
+        let handleDragState = null, timelineDragState = null;
+        assetList.addEventListener('mousedown', (e) => {
+            const motionHandle = e.target.closest('.motion-editor .handle'); if (motionHandle) { e.preventDefault(); const editor = motionHandle.closest('.motion-editor'); handleDragState = { handle: motionHandle, editor, assetId: editor.closest('.asset-item').dataset.assetId, handleType: motionHandle.dataset.handleType, editorRect: editor.getBoundingClientRect() }; document.body.classList.add('is-dragging-handle'); }
+            const timelineTarget = e.target.closest('.timeline-bar, .timeline-handle'); if(timelineTarget) { e.preventDefault(); const bar = timelineTarget.closest('.timeline-bar'), container = bar.closest('.timeline-container'), track = container.querySelector('.timeline-track'); timelineDragState = { bar, track, container, assetId: container.dataset.assetId, animType: bar.dataset.animType, action: e.target.classList.contains('timeline-handle') ? (e.target.classList.contains('left-handle') ? 'resize-left' : 'resize-right') : 'move', startX: e.clientX, initialLeft: parseFloat(bar.style.left), initialWidth: parseFloat(bar.style.width), pixelsPerPercent: track.offsetWidth / 100 }; document.body.classList.add('is-dragging'); }
+        });
+        
+        document.addEventListener('mousemove', (e) => {
+            if (handleDragState) {
+                const { handle, editor, assetId, handleType, editorRect } = handleDragState; let x = Math.max(0, Math.min(e.clientX - editorRect.left, editorRect.width)), y = Math.max(0, Math.min(e.clientY - editorRect.top, editorRect.height));
+                handle.style.left = `${x}px`; handle.style.top = `${y}px`; const asset = assets.find(a => a.id === assetId), item = editor.closest('.asset-item');
+                const assetCenterX = (asset.x + asset.width / 2)/bannerWidth*editorRect.width, assetCenterY = (asset.y + asset.height/2)/bannerHeight*editorRect.height;
+                item.querySelector(`.anim-controls[data-anim-type="${handleType}"] [data-prop="x"]`).value = Math.round((x-assetCenterX)/editorRect.width*bannerWidth);
+                item.querySelector(`.anim-controls[data-anim-type="${handleType}"] [data-prop="y"]`).value = Math.round((y-assetCenterY)/editorRect.height*bannerHeight);
+                const startLine=editor.querySelector('.start-path'), endLine=editor.querySelector('.end-path');
+                if (handleType==='in'){startLine.setAttribute('x1',x);startLine.setAttribute('y1',y);}else{endLine.setAttribute('x2',x);endLine.setAttribute('y2',y);}
+            } else if (timelineDragState) {
+                const { bar, action, startX, initialLeft, initialWidth, pixelsPerPercent, assetId, animType, container } = timelineDragState; 
+                const dPercent = (e.clientX - startX) / pixelsPerPercent; 
+                let newDelayMs, newDurationMs;
+                
+                // Get current positions of other bars for constraint checking
+                const setting = animationSettings.find(s => s.id === assetId);
+                if (!setting) return;
+                
+                const getConstraints = () => {
+                    const inEnd = (setting.in.delay + setting.in.duration) / totalTimelineDuration * 100;
+                    const midStart = setting.mid.delay / totalTimelineDuration * 100;
+                    const midEnd = (setting.mid.delay + setting.mid.duration) / totalTimelineDuration * 100;
+                    const outStart = setting.out.delay / totalTimelineDuration * 100;
+                    return { inEnd, midStart, midEnd, outStart };
+                };
+                
+                const constraints = getConstraints();
+                
+                if (action === 'move') {
+                    let newLeft = initialLeft + dPercent;
+                    
+                    // Apply constraints based on animation type
+                    if (animType === 'in') {
+                        newLeft = Math.max(0, Math.min(constraints.midStart - initialWidth, newLeft));
+                    } else if (animType === 'mid') {
+                        newLeft = Math.max(constraints.inEnd, Math.min(constraints.outStart - initialWidth, newLeft));
+                    } else if (animType === 'out') {
+                        newLeft = Math.max(constraints.midEnd, Math.min(100 - initialWidth, newLeft));
+                    }
+                    
+                    newLeft = Math.max(0, newLeft);
+                    bar.style.left = `${newLeft}%`;
+                    newDelayMs = (newLeft / 100) * totalTimelineDuration;
+                    newDurationMs = (initialWidth / 100) * totalTimelineDuration;
+                } 
+                else if (action === 'resize-left') {
+                    let newLeft = initialLeft + dPercent;
+                    
+                    // Apply constraints
+                    if (animType === 'mid') {
+                        newLeft = Math.max(constraints.inEnd, newLeft);
+                    } else if (animType === 'out') {
+                        newLeft = Math.max(constraints.midEnd, newLeft);
+                    }
+                    
+                    newLeft = Math.max(0, Math.min(initialLeft + initialWidth - 1, newLeft));
+                    const newWidth = Math.max(1, initialWidth - (newLeft - initialLeft));
+                    bar.style.left = `${newLeft}%`;
+                    bar.style.width = `${newWidth}%`;
+                    newDelayMs = (newLeft / 100) * totalTimelineDuration;
+                    newDurationMs = (newWidth / 100) * totalTimelineDuration;
+                } 
+                else { // resize-right
+                    let newWidth = initialWidth + dPercent;
+                    
+                    // Apply constraints
+                    if (animType === 'in') {
+                        const maxWidth = constraints.midStart - initialLeft;
+                        newWidth = Math.min(maxWidth, newWidth);
+                    } else if (animType === 'mid') {
+                        const maxWidth = constraints.outStart - initialLeft;
+                        newWidth = Math.min(maxWidth, newWidth);
+                    }
+                    
+                    newWidth = Math.max(1, Math.min(100 - initialLeft, newWidth));
+                    bar.style.width = `${newWidth}%`;
+                    newDelayMs = (initialLeft / 100) * totalTimelineDuration;
+                    newDurationMs = (newWidth / 100) * totalTimelineDuration;
+                }
+                
+                const cg = assetList.querySelector(`.asset-item[data-asset-id="${assetId}"] .anim-controls[data-anim-type="${animType}"]`);
+                cg.querySelector('[data-prop="delay"]').value = (newDelayMs / 1000).toFixed(2); 
+                cg.querySelector('[data-prop="duration"]').value = (newDurationMs / 1000).toFixed(2);
+                updateTimelineLabels(container, animType, newDelayMs, newDurationMs);
+            }
+        });
+
+        // Debounced preview refresh to prevent blocking
+        let previewRefreshTimeout = null;
+        const debouncedRefreshPreview = () => {
+            clearTimeout(previewRefreshTimeout);
+            previewRefreshTimeout = setTimeout(() => {
+                refreshPreview();
+            }, 250); // 250ms debounce
+        };
+
+        document.addEventListener('mouseup', () => { if (handleDragState || timelineDragState) { updateSettingsFromUI(handleDragState ? handleDragState.assetId : timelineDragState.assetId); debouncedRefreshPreview(); document.body.classList.remove('is-dragging-handle', 'is-dragging'); handleDragState = timelineDragState = null; } });
+        
+        assetList.addEventListener('click', e => {
+            const item = e.target.closest('.asset-item'); if (!item) return; const id = item.dataset.assetId;
+            if (e.target.closest('.copy-btn')) { copiedAnimation = deepClone(animationSettings.find(s => s.id === id)); renderAssets(bannerWidth, bannerHeight); } 
+            else if (e.target.closest('.paste-btn')) { if (!copiedAnimation) return; const s = animationSettings.find(s => s.id === id); if(s){s.in=deepClone(copiedAnimation.in); s.mid=deepClone(copiedAnimation.mid); s.out=deepClone(copiedAnimation.out); renderAssets(bannerWidth, bannerHeight); refreshAndPlay();}} 
+            else if (e.target.closest('.anim-type-toggle button')) { const mode = e.target.closest('button').dataset.mode, s = animationSettings.find(s=>s.id===id); if(s){s.in.style=(mode==='custom')?'custom':'fade-in'; s.out.style=(mode==='custom')?'custom':'none'; renderAssets(bannerWidth,bannerHeight); refreshAndPlay();}}
+            else if (e.target.closest('.asset-header')) { const d=item.querySelector('.settings-dropdown'), b=item.querySelector('.toggle-settings-btn'), isOpen=d.style.display==='block'; d.style.display=isOpen?'none':'block'; b.classList.toggle('is-open',!isOpen); }
+        });
+        
+        assetList.addEventListener('input', e => {
+            const target=e.target, item=target.closest('.asset-item'); if(!item)return;
+            
+            if(target.matches('.slider, .slider-value')){ 
+                // Special handling for intensity slider (different structure)
+                if(target.getAttribute('data-prop') === 'intensity' || 
+                   (target.classList.contains('slider-value') && target.closest('.grid') && target.closest('.grid').querySelector('[data-prop="intensity"]'))) {
+                    
+                    const gridContainer = target.closest('.grid');
+                    const s = gridContainer?.querySelector('[data-prop="intensity"]');
+                    const v = gridContainer?.querySelector('.slider-value');
+                    
+                    console.log('Intensity input detected:', target, 's:', s, 'v:', v);
+                    
+                    if(s && v) {
+                        if(target === s) {
+                            // Slider changed, update percentage
+                            const newValue = Math.round((parseFloat(s.value) - 1) * 100);
+                            v.value = newValue;
+                            console.log('Slider -> Percentage:', s.value, '->', newValue);
+                        } else if(target === v) {
+                            // Percentage changed, update slider
+                            const newValue = Math.max(1.05, (parseFloat(v.value) / 100) + 1);
+                            s.value = newValue;
+                            console.log('Percentage -> Slider:', v.value, '->', newValue);
+                        }
+                    }
+                } else {
+                    // Regular slider-value pairs
+                    const g=target.closest('.slider-group'), s=g?.querySelector('.slider'), v=g?.querySelector('.slider-value'); 
+                    if(s && v) {
+                        target===s?(v.value=s.value):(s.value=v.value);
+                    }
+                }
+                            }
+                updateSettingsFromUI(item.dataset.assetId); debouncedRefreshPreview();
+        });
+
+
+
+        previewBtn.addEventListener('click', () => {
+            currentTime=0; isPlaying=true; playIcon.style.display='none'; pauseIcon.style.display='block'; lastFrameTime = performance.now(); cancelAnimationFrame(animationFrameId);
+            if(previewIframe.contentWindow && previewIframe.srcdoc.length>0){ previewIframe.contentWindow.postMessage({type:'SEEK',time:0},'*'); previewIframe.contentWindow.postMessage({type:'PLAY'},'*'); }
+            updateScrubberPosition(); updateTimeDisplay(); animationFrameId = requestAnimationFrame(animationLoop);
+        });
+
+        [staggerBtn, adjustDurationBtn].forEach(btn => btn.addEventListener('click', () => {
+            if (btn === staggerBtn) { 
+                const val = parseFloat(staggerValueInput.value) * 1000; 
+                [...assets].reverse().forEach((a, i) => { 
+                    const s = animationSettings.find(s => s.id === a.id); 
+                    if(s){
+                        s.in.style='fade-in';
+                        s.out.style='none';
+                        s.in.delay=1000+(i*val);
+                        // Recalculate mid position after stagger
+                        const midPos = calculateMidPosition(s.in, s.out, totalTimelineDuration);
+                        s.mid.delay = midPos.delay;
+                        s.mid.duration = midPos.duration;
+                    }
+                });
+            } else { 
+                const oldDuration = totalTimelineDuration;
+                updateTotalTimeline(); 
+                const newDuration = totalTimelineDuration;
+                const scaleFactor = newDuration / oldDuration;
+                
+                animationSettings.forEach(s => { 
+                    // Proportionally scale all animations
+                    s.in.delay = Math.round(s.in.delay * scaleFactor);
+                    s.in.duration = Math.round(s.in.duration * scaleFactor);
+                    s.mid.delay = Math.round(s.mid.delay * scaleFactor);
+                    s.mid.duration = Math.round(s.mid.duration * scaleFactor);
+                    s.out.delay = Math.round(s.out.delay * scaleFactor);
+                    s.out.duration = Math.round(s.out.duration * scaleFactor);
+                    
+                    // Ensure constraints after scaling
+                    if (s.in.delay >= totalTimelineDuration) s.in.delay = Math.max(0, totalTimelineDuration - s.in.duration); 
+                    if (s.in.delay + s.in.duration > totalTimelineDuration) s.in.duration = Math.max(100, totalTimelineDuration - s.in.delay); 
+                    
+                    if (s.mid.delay >= totalTimelineDuration) s.mid.delay = Math.max(s.in.delay + s.in.duration, totalTimelineDuration - s.mid.duration);
+                    if (s.mid.delay + s.mid.duration > totalTimelineDuration) s.mid.duration = Math.max(100, totalTimelineDuration - s.mid.delay);
+                    if (s.mid.delay < s.in.delay + s.in.duration) s.mid.delay = s.in.delay + s.in.duration;
+                    
+                    if (s.out.delay >= totalTimelineDuration) s.out.delay = Math.max(s.mid.delay + s.mid.duration, totalTimelineDuration - s.out.duration); 
+                    if (s.out.delay + s.out.duration > totalTimelineDuration) s.out.duration = Math.max(100, totalTimelineDuration - s.out.delay); 
+                    if (s.out.delay < s.mid.delay + s.mid.duration) s.out.delay = s.mid.delay + s.mid.duration;
+                }); 
+            }
+            renderAssets(bannerWidth, bannerHeight); refreshAndPlay(); 
+        }));
+        
+        // MODIFIED: This now sends the banner METADATA to the backend to get calculated weights.
+        sendToExportBtn.addEventListener('click', () => {
+            if (assets.length === 0) return;
+            sendToExportBtn.disabled = true;
+            sendToExportBtn.textContent = 'Processing...';
+            animationSettings.forEach(s => updateSettingsFromUI(s.id));
+            const bannerData = {
+                frameName, 
+                bannerWidth, 
+                bannerHeight, 
+                backgroundColor: frameBackgroundColor, 
+                clickTag: clickTagUrlInput.value, 
+                loop: loopToggle.checked, 
+                totalDuration: totalTimelineDuration, 
+                settings: deepClone(animationSettings), 
+                assets: deepClone(assets)
+            };
+            postMsg('get-queue-item-data', { bannerData });
+        });
+
+        // Cancel video export button
+        cancelVideoExportBtn.addEventListener('click', () => {
+            if (isVideoExporting) {
+                isVideoExporting = false;
+                postMsg('cancel-video-export'); // Send cancel message to Figma plugin
+                videoProgressText.textContent = 'Export cancelled by user';
+                videoExportStatus.textContent = 'Cancelling...';
+                generateFeedback.textContent = '❌ Video export cancelled';
+                generateFeedback.style.color = 'var(--danger-color)';
+                resetVideoExportUI();
+            }
+        });
+
+        // Export process function
+        const startExportProcess = () => {
+            const selectedPreset = exportPresetSelect.value;
+            
+            // Check if video export is selected
+            if (selectedPreset === 'gif' || selectedPreset === 'mp4') {
+                startVideoExport(selectedPreset);
+                return;
+            }
+            
+            // Regular ZIP export process
+            exportAllBtn.disabled = true;
+            mainZipInstance = new JSZip();
+            const usedNames = {};
+
+            // Create unique zip file names for each banner in the queue
+            exportQueue.forEach(item => {
+                let base = item.bannerData.frameName.replace(/[^a-zA-Z0-9]/g, '_') || 'banner';
+                let final = base;
+                let c = 2;
+                while (usedNames[final.toLowerCase()]) {
+                    final = `${base}_${c++}`;
+                }
+                usedNames[final.toLowerCase()] = true;
+                item.bannerData.finalZipName = `${final}.zip`;
+            });
+
+            // Start the export process with the first item in the queue
+            const firstBanner = exportQueue[0];
+            showProgress(`Zipping 1 of ${exportQueue.length}: ${firstBanner.bannerData.frameName}`, 0);
+            postMsg('export-single-banner', {
+                bannerData: firstBanner.bannerData,
+                index: 0,
+                optimize: optimizeImagesToggle.checked,
+                exportPreset: exportPresetSelect.value
+            });
+        };
+
+// MODIFIED: This now loops through the queue and tells the backend to export each one.
+       exportAllBtn.addEventListener('click', async () => {
+            if (exportQueue.length === 0) return;
+            generateFeedback.textContent = '';
+
+            // Only allow export if Pro Key is validated
+            if (!isPro) {
+                generateFeedback.textContent = 'Please validate your Pro Key first.';
+                generateFeedback.style.color = 'var(--danger-color)';
+                return;
+            }
+
+            startExportProcess();
+        });
+        
+
+        
+        // Video Export Functions
+        const startVideoExport = async (format) => {
+            if (exportQueue.length === 0) return;
+            
+            const bannerData = exportQueue[0].bannerData; // Export first banner in queue
+            generateFeedback.textContent = '';
+            videoExportProgress.style.display = 'block';
+            isVideoExporting = true; // Track export state
+            
+            // Reset progress bar and start with immediate animation
+            videoProgressBarInner.classList.add('indeterminate');
+            videoProgressBarInner.style.width = '0%';
+            videoProgressText.textContent = 'Initializing video export...';
+            videoExportStatus.textContent = 'Setting up video capture process...';
+            
+            exportAllBtn.disabled = true;
+            
+            try {
+                // Request frame capture from Figma plugin
+                postMsg('start-video-export', { 
+                    bannerData, 
+                    format, 
+                    frameDuration: 33 // 30fps
+                });
+                
+            } catch (error) {
+                console.error('Video export failed:', error);
+                videoProgressText.textContent = 'Video export failed';
+                generateFeedback.textContent = 'Error: Video export failed';
+                resetVideoExportUI();
+            }
+        };
+        
+        const uploadFramesToServer = async (frames, format, frameDuration, totalDuration, filename) => {
+            try {
+                videoProgressText.textContent = 'Uploading frames to server...';
+                videoProgressBarInner.style.width = '50%';
+                videoExportStatus.textContent = 'Processing video...';
+                
+                // Create FormData for upload
+                const formData = new FormData();
+                
+                // Add metadata
+                formData.append('format', format);
+                formData.append('frameDuration', frameDuration.toString());
+                formData.append('totalDuration', totalDuration.toString());
+                formData.append('filename', filename);
+                
+                // Add frames as blobs
+                frames.forEach((frameArray, index) => {
+                    const frameBlob = new Blob([new Uint8Array(frameArray)], { type: 'image/png' });
+                    formData.append('frames', frameBlob, `frame_${index}.png`);
+                });
+                
+                // Upload to backend
+                const response = await fetch(getApiUrl('/api/create-video'), {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`Server error: ${response.status}`);
+                }
+                
+                const result = await response.json();
+                
+                if (result.downloadUrl) {
+                    // Success - trigger download
+                    videoProgressText.textContent = 'Video created successfully!';
+                    videoProgressBarInner.style.width = '100%';
+                    videoExportStatus.textContent = `${format.toUpperCase()} file ready for download`;
+                    
+                    // Auto-download the file
+                    downloadFile(result.downloadUrl, result.filename);
+                    
+                    generateFeedback.textContent = `✅ ${format.toUpperCase()} export complete!`;
+                    setTimeout(() => {
+                        resetVideoExportUI();
+                        generateFeedback.textContent = '';
+                    }, 3000);
+                    
+                } else {
+                    throw new Error('No download URL received');
+                }
+                
+            } catch (error) {
+                console.error('Upload failed:', error);
+                videoProgressText.textContent = 'Upload failed';
+                generateFeedback.textContent = `Error: ${error.message}`;
+                resetVideoExportUI();
+            }
+        };
+        
+        const downloadFile = async (url, filename) => {
+            try {
+                // First try to fetch the file and create a blob URL for download
+                const response = await fetch(url);
+                if (response.ok) {
+                    const blob = await response.blob();
+                    const blobUrl = URL.createObjectURL(blob);
+                    
+                    const link = document.createElement('a');
+                    link.href = blobUrl;
+                    link.download = filename;
+                    link.style.display = 'none';
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                    
+                    // Clean up the blob URL after a short delay
+                    setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+                } else {
+                    // Fallback: open in new tab if fetch fails
+                    window.open(url, '_blank');
+                }
+            } catch (error) {
+                console.error('Download failed:', error);
+                // Fallback: open in new tab if everything fails
+                window.open(url, '_blank');
+            }
+        };
+        
+        const resetVideoExportUI = () => {
+            setTimeout(() => {
+                videoExportProgress.style.display = 'none';
+                videoProgressBarInner.classList.remove('indeterminate'); // Reset animation state
+                videoProgressBarInner.style.width = '0%';
+                isVideoExporting = false; // Clear export state
+                exportAllBtn.disabled = exportQueue.length === 0;
+            }, 2000);
+        };
+        
+        // Pro Key UI helper functions
+        const setProKeyActiveState = () => {
+            proKeyInput.value = '••••••••••••••••••••'; // Show placeholder dots
+            proKeyInput.disabled = true;
+            proKeyInput.style.borderColor = 'var(--accent-green)';
+            proKeyInput.style.backgroundColor = 'var(--bg-tertiary)'; // Slight visual indication it's disabled
+            validateKeyBtn.disabled = true;
+            resetProKeyBtn.disabled = false;
+            exportAllBtn.disabled = false;
+        };
+        
+        const clearProKeyState = () => {
+            proKeyInput.value = '';
+            proKeyInput.disabled = false;
+            proKeyInput.style.borderColor = 'var(--border-color)';
+            proKeyInput.style.backgroundColor = ''; // Reset to default
+            validateKeyBtn.disabled = false;
+            resetProKeyBtn.disabled = true;
+            exportAllBtn.disabled = true;
+            isPro = false;
+        };
+        
+        const setInitialProKeyState = () => {
+            clearProKeyState(); // Use clear state as initial state
+        };
+        
+        // Validate Key button event listener
+        validateKeyBtn.addEventListener('click', async () => {
+            const proKey = proKeyInput.value.trim();
+            
+            if (!proKey) {
+                generateFeedback.textContent = 'Please enter a Pro Key before validating.';
+                generateFeedback.style.color = 'var(--danger-color)';
+                proKeyInput.style.borderColor = 'var(--danger-color)';
+                return;
+            }
+            
+            validateKeyBtn.disabled = true;
+            generateFeedback.textContent = '🔄 Validating key...';
+            generateFeedback.style.color = 'var(--text-primary)';
+            proKeyInput.style.borderColor = 'var(--accent-blue)';
+            
+            try {
+                const response = await fetch(getApiUrl('/api/validate-key'), {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ licenseKey: proKey }),
+                });
+
+                const result = await response.json();
+
+                if (response.ok && result.valid) {
+                    generateFeedback.textContent = '✅ Key validated successfully!';
+                    generateFeedback.style.color = 'var(--accent-green)';
+                    isPro = true;
+                    postMsg('unlock-pro');
+                    setProKeyActiveState();
+                    
+                    // Auto-hide success message after 3 seconds
+                    setTimeout(() => {
+                        generateFeedback.textContent = '';
+                    }, 3000);
+
+                } else {
+                    generateFeedback.textContent = result.message || 'Invalid Pro Key.';
+                    generateFeedback.style.color = 'var(--danger-color)';
+                    proKeyInput.style.borderColor = 'var(--danger-color)';
+                    validateKeyBtn.disabled = false; // Re-enable validation button
+                }
+
+            } catch (error) {
+                console.error('Validation request failed:', error);
+                generateFeedback.textContent = 'Error: Could not connect to the server.';
+                generateFeedback.style.color = 'var(--danger-color)';
+                proKeyInput.style.borderColor = 'var(--danger-color)';
+                validateKeyBtn.disabled = false; // Re-enable validation button
+            }
+        });
+        
+        // Reset Pro Key button event listener
+        resetProKeyBtn.addEventListener('click', () => {
+            const confirmReset = confirm('Are you sure you want to reset your Pro Key? You will need to validate it again to export.');
+            if (confirmReset) {
+                clearProKeyState();
+                generateFeedback.textContent = 'Pro Key reset. Please enter and validate a new key.';
+                generateFeedback.style.color = 'var(--text-secondary)';
+                postMsg('clear-pro-status'); // Clear saved Pro status
+                
+                // Auto-hide reset message after 3 seconds
+                setTimeout(() => {
+                    generateFeedback.textContent = '';
+                }, 3000);
+            }
+        });
+        
+        // Allow editing Pro Key when user clicks on disabled field (to enter new key)
+        proKeyInput.addEventListener('click', () => {
+            if (proKeyInput.disabled && proKeyInput.value.startsWith('••••')) {
+                const confirmChange = confirm('Do you want to enter a new Pro Key? This will clear your current validation.');
+                if (confirmChange) {
+                    clearProKeyState();
+                    proKeyInput.focus();
+                    postMsg('clear-pro-status'); // Clear saved Pro status
+                }
+            }
+        });
+        
+        saveSettingsBtn.addEventListener('click', () => {
+            animationSettings.forEach(s => updateSettingsFromUI(s.id));
+            const settingsToSave = {
+                animations: animationSettings.map(s => ({ name: s.name, in: s.in, mid: s.mid, out: s.out })),
+                clickTag: clickTagUrlInput.value, loop: loopToggle.checked, totalDuration: totalTimelineDuration,
+            };
+            postMsg('save-settings', { settings: settingsToSave });
+        });
+        
+        loadSettingsBtn.addEventListener('click', () => postMsg('load-settings'));
+        
+        resetSettingsBtn.addEventListener('click', () => {
+            if (assets.length === 0) return; postMsg('reset-settings');
+            clickTagUrlInput.value = ''; loopToggle.checked = true; totalDurationInput.value = 15;
+            // Note: Pro Key state is NOT cleared - only animation settings are reset
+            const val = parseFloat(staggerValueInput.value) * 1000;
+            animationSettings = assets.map((a, i) => {
+                const inAnim = { ...defaultIn, delay: 1000 + ([...assets].reverse().findIndex(x => x.id === a.id) * val) };
+                const outAnim = { ...defaultOut };
+                const midPos = calculateMidPosition(inAnim, outAnim, 15000);
+                return { id: a.id, name: a.name, in: inAnim, out: outAnim, mid: { ...defaultMid, ...midPos } };
+            });
+            renderAssets(bannerWidth, bannerHeight); refreshAndPlay();
+        });
+
+
+        updateUIState();
+        renderExportQueue();
+        
+        // Initialize Pro Key state after all functions are defined
+        setInitialProKeyState();
+    });
+    </script>
+</body>
+</html>

@@ -1,0 +1,4 @@
+email,stripe_subsc,plan_name,is_active,activation_key,created_at
+user1@example.com,sub_123456789,Pro,True,SUPER-SECRET-KEY-123,2025-08-01T10:00:00Z
+user2@example.com,sub_987654321,Starter,False,ABC123XYZ,2025-08-01T10:15:00Z
+user3@example.com,,Free,False,,2025-08-01T10:30:00Z
